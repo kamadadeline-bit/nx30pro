@@ -1,0 +1,16 @@
+#!/bin/sh
+# First-boot defaults only: do not intercept router traffic before manual validation.
+if [ -f /etc/config/ua3f ]; then
+    uci -q set ua3f.enabled.enabled='0'
+    uci -q set ua3f.main.server_mode='TPROXY'
+    uci -q set ua3f.main.port='1080'
+    uci -q set ua3f.main.ua='Mozilla/5.0'
+    uci -q commit ua3f
+fi
+
+if [ -f /etc/config/openclash ]; then
+    uci -q set openclash.config.enable='0'
+    uci -q commit openclash
+fi
+
+exit 0
