@@ -23,8 +23,35 @@ grep -q 'TARGET_DEVICES += h3c_magic-nx30-pro' target/linux/mediatek/image/filog
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
-# Pin UA3F to an official release tag by default; package lives under openwrt/.
-git clone --depth 1 --branch "$UA3F_REF" https://github.com/SunBK201/UA3F.git package/UA3F
+# UA3F keeps its OpenWrt package Makefile under openwrt/ and Go sources at the repo root.
+# Stage a proper top-level package directory, then fix source paths for OpenWrt's build system.
+UA3F_SRC_DIR="$ROOT_DIR/work/UA3F-src"
+rm -rf "$UA3F_SRC_DIR" package/UA3F
+git clone --depth 1 --branch "$UA3F_REF" https://github.com/SunBK201/UA3F.git "$UA3F_SRC_DIR"
+mkdir -p package/UA3F
+cp "$UA3F_SRC_DIR"/go.mod "$UA3F_SRC_DIR"/go.sum "$UA3F_SRC_DIR"/main.go "$UA3F_SRC_DIR"/LICENSE package/UA3F/
+cp -a "$UA3F_SRC_DIR"/cmd "$UA3F_SRC_DIR"/internal package/UA3F/
+cp -a "$UA3F_SRC_DIR"/openwrt/files "$UA3F_SRC_DIR"/openwrt/htdocs "$UA3F_SRC_DIR"/openwrt/luasrc "$UA3F_SRC_DIR"/openwrt/po package/UA3F/
+cp "$UA3F_SRC_DIR"/openwrt/Makefile package/UA3F/Makefile
+python3 - "$BUILD_DIR/package/UA3F/Makefile" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+content = path.read_text(encoding="utf-8")
+content = content.replace("PKG_NAME:=UA3F", "PKG_NAME:=ua3f")
+content = content.replace(
+    "$(CP) ../go.mod ../go.sum ../main.go ../cmd ../internal $(PKG_BUILD_DIR)",
+    "$(CP) $(TOPDIR)/package/UA3F/go.mod $(TOPDIR)/package/UA3F/go.sum $(TOPDIR)/package/UA3F/main.go $(TOPDIR)/package/UA3F/cmd $(TOPDIR)/package/UA3F/internal $(PKG_BUILD_DIR)"
+)
+content = content.replace("po2lmo ./po/zh_cn/ua3f.po", "po2lmo $(TOPDIR)/package/UA3F/po/zh_cn/ua3f.po")
+content = content.replace("./files/", "$(TOPDIR)/package/UA3F/files/")
+content = content.replace("./luasrc/", "$(TOPDIR)/package/UA3F/luasrc/")
+content = content.replace("./htdocs/", "$(TOPDIR)/package/UA3F/htdocs/")
+if "../go.mod" in content or "./files/" in content or "./luasrc/" in content or "./htdocs/" in content:
+    raise SystemExit("UA3F Makefile path normalization incomplete.")
+path.write_text(content, encoding="utf-8")
+PY
 
 # Add the upstream OpenClash LuCI package to this fresh source tree.
 git clone --depth 1 --branch "$OPENCLASH_REF" https://github.com/vernesong/OpenClash.git "$ROOT_DIR/work/OpenClash-src"
@@ -126,7 +153,7 @@ cp .config "$OUT/build.config"
   echo "LEDE_REF=$LEDE_REF"
   echo "LEDE_COMMIT=$(git rev-parse HEAD)"
   echo "UA3F_REF=$UA3F_REF"
-  echo "UA3F_COMMIT=$(git -C package/UA3F rev-parse HEAD)"
+  echo "UA3F_COMMIT=$(git -C "$UA3F_SRC_DIR" rev-parse HEAD)"
   echo "OPENCLASH_REF=$OPENCLASH_REF"
   echo "OPENCLASH_COMMIT=$(git -C "$ROOT_DIR/work/OpenClash-src" rev-parse HEAD)"
   cat "$ROOT_DIR/work/CORE-INFO.txt"
