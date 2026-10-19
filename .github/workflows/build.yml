@@ -1,0 +1,99 @@
+name: Build H3C NX30 Pro LEDE
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'README.md'
+      - 'configs/**'
+      - 'scripts/**'
+      - 'files/**'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+    inputs:
+      include_mihomo_core:
+        description: 'Preinstall a SHA-256 verified Linux ARM64 Mihomo core (does not fix runtime OOM)'
+        required: true
+        type: boolean
+        default: true
+      lede_ref:
+        description: 'coolsnowwolf/lede branch or tag'
+        required: true
+        type: string
+        default: master
+      ua3f_ref:
+        description: 'UA3F branch or tag'
+        required: true
+        type: string
+        default: v3.7.0
+      openclash_ref:
+        description: 'OpenClash branch or tag'
+        required: true
+        type: string
+        default: master
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      LEDE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.lede_ref || 'master' }}
+      UA3F_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ua3f_ref || 'v3.7.0' }}
+      OPENCLASH_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.openclash_ref || 'master' }}
+      INCLUDE_MIHOMO_CORE: ${{ github.event_name == 'push' && 'true' || (inputs.include_mihomo_core && 'true' || 'false') }}
+    steps:
+      - name: Checkout dedicated NX30 Pro build configuration
+        uses: actions/checkout@v4
+
+      - name: Free disk space and install build dependencies
+        run: |
+          set -euxo pipefail
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git \
+            libncurses-dev libssl-dev libelf-dev python3 python3-dev python3-setuptools \
+            python3-pyelftools python3-yaml rsync swig unzip zlib1g-dev file wget curl \
+            device-tree-compiler ccache time xsltproc \
+            libxml-parser-perl libusb-1.0-0-dev
+          df -h
+
+      - name: Print selected build configuration
+        run: |
+          echo "LEDE_REF=$LEDE_REF"
+          echo "UA3F_REF=$UA3F_REF"
+          echo "OPENCLASH_REF=$OPENCLASH_REF"
+          echo "INCLUDE_MIHOMO_CORE=$INCLUDE_MIHOMO_CORE"
+          df -h
+
+      - name: Build NX30 Pro firmware
+        run: ./scripts/build.sh
+
+      - name: Upload firmware and verification metadata
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NX30Pro-LEDE-UA3F-OpenClash
+          path: work/openwrt/bin/targets/mediatek/filogic/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NX30Pro-build-diagnostics
+          path: |
+            work/openwrt/.config
+            work/openwrt/logs/**
+            work/mihomo-release.json
+          if-no-files-found: ignore
+          retention-days: 7
