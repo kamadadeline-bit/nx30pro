@@ -75,7 +75,7 @@ jobs:
           df -h
 
       - name: Build NX30 Pro firmware
-        run: ./scripts/build.sh
+        run: bash ./scripts/build.sh
 
       - name: Upload firmware and verification metadata
         if: success()
