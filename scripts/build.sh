@@ -124,7 +124,7 @@ for package in \
   kmod-nf-conntrack-netlink kmod-sched-core luci-app-openclash dnsmasq-full \
   luci-app-passwall mentohust luci-app-mentohust libpcap \
   luci-proto-relay relayd iw kmod-nft-socket kmod-nft-nat \
-  luci-theme-argon luci-i18n-argon-config-zh-cn \
+  luci-theme-argon luci-app-argon-config \
   kmod-nf-reject kmod-nf-reject6 kmod-tun kmod-inet-diag; do
   if ! grep -qx "CONFIG_PACKAGE_${package}=y" .config; then
     echo "ERROR: required package ${package} is missing or was dropped by Kconfig." >&2
