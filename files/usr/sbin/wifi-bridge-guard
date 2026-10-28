@@ -1,0 +1,85 @@
+#!/bin/sh
+# Recover a configured Wi-Fi STA uplink if it stays disconnected.
+# Default: sample every 60s, recover after 3 failures, at most once per 600s per radio.
+
+CONFIG="wifi-bridge-guard.main"
+
+read_number() {
+    value="$(uci -q get "$1" 2>/dev/null)"
+    case "$value" in
+        ''|*[!0-9]*) value="$2" ;;
+    esac
+    printf '%s' "$value"
+}
+
+radio_sta_state() {
+    radio="$1"
+    phy_id="${radio#radio}"
+    has_sta=0
+
+    for section in $(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^=]*\)=wifi-iface$/\1/p'); do
+        [ "$(uci -q get "wireless.$section.mode" 2>/dev/null)" = "sta" ] || continue
+        [ "$(uci -q get "wireless.$section.device" 2>/dev/null)" = "$radio" ] || continue
+        [ "$(uci -q get "wireless.$section.disabled" 2>/dev/null)" = "1" ] && continue
+        has_sta=1
+    done
+
+    [ "$has_sta" = "1" ] || return 2
+
+    for iface in $(iw dev 2>/dev/null | sed -n 's/^[[:space:]]*Interface //p'); do
+        wiphy="$(iw dev "$iface" info 2>/dev/null | awk '$1 == "wiphy" {print $2; exit}')"
+        [ "$wiphy" = "$phy_id" ] || continue
+        mode="$(iw dev "$iface" info 2>/dev/null | awk '$1 == "type" {print $2; exit}')"
+        [ "$mode" = "managed" ] || continue
+        if iw dev "$iface" link 2>/dev/null | grep -q '^Connected to '; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+sleep 30
+while :; do
+    enabled="$(read_number "$CONFIG.enabled" 1)"
+    interval="$(read_number "$CONFIG.interval" 60)"
+    failures="$(read_number "$CONFIG.failures" 3)"
+    cooldown="$(read_number "$CONFIG.cooldown" 600)"
+    [ "$interval" -ge 30 ] || interval=30
+    [ "$failures" -ge 2 ] || failures=2
+    [ "$cooldown" -ge 180 ] || cooldown=180
+
+    if [ "$enabled" = "1" ] && command -v iw >/dev/null 2>&1; then
+        for radio in $(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^=]*\)=wifi-device$/\1/p'); do
+            [ "$(uci -q get "wireless.$radio.disabled" 2>/dev/null)" = "1" ] && continue
+
+            radio_sta_state "$radio"
+            state=$?
+            fail_file="/tmp/wifi-bridge-guard-${radio}.fails"
+            last_file="/tmp/wifi-bridge-guard-${radio}.last"
+
+            if [ "$state" = "0" ] || [ "$state" = "2" ]; then
+                rm -f "$fail_file"
+                continue
+            fi
+
+            count="$(cat "$fail_file" 2>/dev/null)"
+            case "$count" in ''|*[!0-9]*) count=0 ;; esac
+            count=$((count + 1))
+            printf '%s\n' "$count" > "$fail_file"
+            [ "$count" -ge "$failures" ] || continue
+
+            now="$(date +%s)"
+            last="$(cat "$last_file" 2>/dev/null)"
+            case "$last" in ''|*[!0-9]*) last=0 ;; esac
+            [ $((now - last)) -ge "$cooldown" ] || continue
+
+            logger -t wifi-bridge-guard "STA uplink on $radio appears disconnected; attempting radio recovery"
+            if ! wifi up "$radio" >/dev/null 2>&1; then
+                wifi reload "$radio" >/dev/null 2>&1
+            fi
+            printf '0\n' > "$fail_file"
+            printf '%s\n' "$now" > "$last_file"
+        done
+    fi
+    sleep "$interval"
+done

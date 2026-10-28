@@ -1,0 +1,5 @@
+config guard 'main'
+    option enabled '1'
+    option interval '60'
+    option failures '3'
+    option cooldown '600'

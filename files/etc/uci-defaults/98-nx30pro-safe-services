@@ -4,13 +4,20 @@ if [ -f /etc/config/ua3f ]; then
     uci -q set ua3f.enabled.enabled='0'
     uci -q set ua3f.main.server_mode='TPROXY'
     uci -q set ua3f.main.port='1080'
-    uci -q set ua3f.main.ua='Mozilla/5.0'
+    uci -q set ua3f.main.ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.97 Safari/537.36 Core/1.116.569.400 QQBrowser/19.7.6765.400'
+    # Leave optional BPF TC offload disabled until the actual uplink interface is confirmed.
+    uci -q set ua3f.main.l3_rewrite_bpf_offload='0'
     uci -q commit ua3f
 fi
 
 if [ -f /etc/config/openclash ]; then
     uci -q set openclash.config.enable='0'
     uci -q commit openclash
+fi
+
+# Enable STA-link recovery; the guard only acts on radios with a configured STA interface.
+if [ -x /etc/init.d/wifi-bridge-guard ]; then
+    /etc/init.d/wifi-bridge-guard enable
 fi
 
 exit 0

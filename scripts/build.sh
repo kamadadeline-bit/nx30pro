@@ -7,10 +7,12 @@ LEDE_REPO="${LEDE_REPO:-https://github.com/coolsnowwolf/lede.git}"
 LEDE_REF="${LEDE_REF:-master}"
 UA3F_REF="${UA3F_REF:-v3.7.0}"
 OPENCLASH_REF="${OPENCLASH_REF:-master}"
+PASSWALL_LUCI_REF="${PASSWALL_LUCI_REF:-main}"
+PASSWALL_PACKAGES_REF="${PASSWALL_PACKAGES_REF:-main}"
 INCLUDE_MIHOMO_CORE="${INCLUDE_MIHOMO_CORE:-false}"
 
 mkdir -p "$ROOT_DIR/work"
-rm -rf "$BUILD_DIR" "$ROOT_DIR/work/OpenClash-src"
+rm -rf "$BUILD_DIR" "$ROOT_DIR/work/OpenClash-src" "$ROOT_DIR/work/MentoHUST-src"
 git clone --depth 1 --branch "$LEDE_REF" "$LEDE_REPO" "$BUILD_DIR"
 cd "$BUILD_DIR"
 
@@ -20,8 +22,43 @@ grep -q 'TARGET_DEVICES += h3c_magic-nx30-pro' target/linux/mediatek/image/filog
   exit 1
 }
 
+# Add the maintained PassWall package and LuCI feeds before feed metadata is updated.
+python3 - "$BUILD_DIR/feeds.conf.default" "$PASSWALL_PACKAGES_REF" "$PASSWALL_LUCI_REF" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+packages_ref, luci_ref = sys.argv[2:4]
+lines = path.read_text(encoding="utf-8").splitlines()
+lines = [
+    line for line in lines
+    if not line.strip().startswith("src-git passwall_packages ")
+    and not line.strip().startswith("src-git passwall_luci ")
+]
+prefix = [
+    f"src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;{packages_ref}",
+    f"src-git passwall_luci https://github.com/Openwrt-Passwall/openwrt-passwall.git;{luci_ref}",
+]
+path.write_text("\n".join(prefix + lines) + "\n", encoding="utf-8")
+PY
+
 ./scripts/feeds update -a
 ./scripts/feeds install -a
+
+# Stage MentoHUST's daemon and its separate LuCI application as two OpenWrt packages.
+MENTOHUST_SRC_DIR="$ROOT_DIR/work/MentoHUST-src"
+git clone --depth 1 https://github.com/sbwml/luci-app-mentohust.git "$MENTOHUST_SRC_DIR"
+test -f "$MENTOHUST_SRC_DIR/mentohust/Makefile" || {
+  echo 'ERROR: MentoHUST daemon package Makefile not found.' >&2
+  exit 1
+}
+test -f "$MENTOHUST_SRC_DIR/luci-app-mentohust/Makefile" || {
+  echo 'ERROR: MentoHUST LuCI package Makefile not found.' >&2
+  exit 1
+}
+rm -rf package/mentohust package/luci-app-mentohust
+cp -a "$MENTOHUST_SRC_DIR/mentohust" package/mentohust
+cp -a "$MENTOHUST_SRC_DIR/luci-app-mentohust" package/luci-app-mentohust
 
 # UA3F keeps its OpenWrt package Makefile under openwrt/ and Go sources at the repo root.
 # Stage a proper top-level package directory, then fix source paths for OpenWrt's build system.
@@ -74,16 +111,34 @@ for package in \
   ua3f kmod-nft-queue kmod-nft-tproxy kmod-sched-bpf libubox-lua \
   kmod-nft-core kmod-nfnetlink-queue kmod-nf-tproxy kmod-nf-conntrack \
   kmod-nf-conntrack-netlink kmod-sched-core luci-app-openclash dnsmasq-full \
-  kmod-tun kmod-inet-diag; do
+  luci-app-passwall mentohust luci-app-mentohust libpcap \
+  luci-proto-relay relayd iw kmod-nft-socket kmod-nft-nat \
+  kmod-nf-reject kmod-nf-reject6 kmod-tun kmod-inet-diag; do
   if ! grep -qx "CONFIG_PACKAGE_${package}=y" .config; then
     echo "ERROR: required package ${package} is missing or was dropped by Kconfig." >&2
     exit 1
   fi
 done
 
-# Install safe first-boot defaults into the rootfs overlay.
-mkdir -p files/etc/uci-defaults
+# Confirm the standalone SSR-Plus app and PassWall's optional SSR-libev engines stay disabled.
+if grep -qx 'CONFIG_PACKAGE_luci-app-ssr-plus=y' .config; then
+  echo 'ERROR: standalone luci-app-ssr-plus must not be enabled; use PassWall.' >&2
+  exit 1
+fi
+if grep -qx 'CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Client=y' .config || \
+   grep -qx 'CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Server=y' .config; then
+  echo 'ERROR: PassWall SSR-libev engines should stay disabled for this build.' >&2
+  exit 1
+fi
+
+# Install first-boot defaults and the self-recovery helper into the rootfs overlay.
+mkdir -p files/etc/uci-defaults files/etc/init.d files/etc/config files/usr/sbin
 cp "$ROOT_DIR/files/etc/uci-defaults/98-nx30pro-safe-services" files/etc/uci-defaults/
+cp "$ROOT_DIR/files/etc/init.d/wifi-bridge-guard" files/etc/init.d/
+cp "$ROOT_DIR/files/etc/config/wifi-bridge-guard" files/etc/config/
+cp "$ROOT_DIR/files/usr/sbin/wifi-bridge-guard" files/usr/sbin/
+chmod 0755 files/etc/uci-defaults/98-nx30pro-safe-services
+chmod 0755 files/etc/init.d/wifi-bridge-guard files/usr/sbin/wifi-bridge-guard
 
 # Optionally preinstall a verified Mihomo Meta core. This does not fix runtime OOM.
 if [[ "$INCLUDE_MIHOMO_CORE" == "true" ]]; then
@@ -156,6 +211,11 @@ cp .config "$OUT/build.config"
   echo "UA3F_COMMIT=$(git -C "$UA3F_SRC_DIR" rev-parse HEAD)"
   echo "OPENCLASH_REF=$OPENCLASH_REF"
   echo "OPENCLASH_COMMIT=$(git -C "$ROOT_DIR/work/OpenClash-src" rev-parse HEAD)"
+  echo "PASSWALL_LUCI_REF=$PASSWALL_LUCI_REF"
+  echo "PASSWALL_LUCI_COMMIT=$(git -C "$BUILD_DIR/feeds/passwall_luci" rev-parse HEAD)"
+  echo "PASSWALL_PACKAGES_REF=$PASSWALL_PACKAGES_REF"
+  echo "PASSWALL_PACKAGES_COMMIT=$(git -C "$BUILD_DIR/feeds/passwall_packages" rev-parse HEAD)"
+  echo "MENTOHUST_COMMIT=$(git -C "$MENTOHUST_SRC_DIR" rev-parse HEAD)"
   cat "$ROOT_DIR/work/CORE-INFO.txt"
 } > "$OUT/BUILD-INFO.txt"
 
