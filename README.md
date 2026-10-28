@@ -8,6 +8,7 @@
 - 设备 profile：`h3c_magic-nx30-pro`
 - UA3F：使用 TPROXY，保留指定的完整 QQBrowser UA；默认关闭可能因无合适 TC 上行接口而启动失败的 BPF TC offload
 - UA3F 依赖：`kmod-nft-queue`、`kmod-nft-tproxy`、`kmod-sched-bpf`、`libubox-lua`，并校验相关 netfilter 依赖在 Kconfig 后仍存在
+- 无线驱动构建兼容：针对 Linux 6.12.114+ 的 `netns_local` → `netns_immutable` 字段变化，更新 mac80211 backport 条件，修复此前 `struct net_device has no member named netns_local` 编译错误
 - PassWall：从 Openwrt-Passwall 官方维护的 luci 与 packages feeds 构建，使用 nftables 透明代理；显式禁用独立 SSR-Plus 页面，并关闭 PassWall 内部可选的 ShadowsocksR-libev client/server
 - 主题：加入 Jerrykuku 的 Argon 稳定版 v3.1.0，默认深色/浅色可切换并设置为默认主题，附带 Argon 配置页与 LuCI 简体中文基础语言包；主题包官方介绍包括响应式布局和亮暗模式切换
 - MentoHUST：集成锐捷客户端守护进程 `mentohust` 和 `luci-app-mentohust` 管理页面；校园网账号、密码、网卡和认证参数需在刷机后自行填写

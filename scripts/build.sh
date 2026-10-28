@@ -23,6 +23,32 @@ grep -q 'TARGET_DEVICES += h3c_magic-nx30-pro' target/linux/mediatek/image/filog
   exit 1
 }
 
+# Linux 6.12.114's refreshed patch stack uses netns_immutable, while the
+# mac80211 backport compatibility patch still selects netns_local until 6.15.
+# Raise the compatibility cutoff for 6.12.114+; leave older 6.12 kernels intact.
+NETNS_PATCH="$BUILD_DIR/package/kernel/mac80211/patches/build/210-wireless_netns_local_backport.patch"
+python3 - "$NETNS_PATCH" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+if not path.is_file():
+    raise SystemExit(f"ERROR: expected mac80211 compatibility patch not found: {path}")
+content = path.read_text(encoding="utf-8")
+old = "#if LINUX_VERSION_IS_GEQ(6,15,0)"
+count = content.count(old)
+if count != 5:
+    raise SystemExit(
+        f"ERROR: expected 5 netns compatibility guards, found {count}; "
+        "refusing to patch an unexpected upstream version."
+    )
+content = content.replace(old, "#if LINUX_VERSION_IS_GEQ(6,12,114)")
+path.write_text(content, encoding="utf-8")
+if content.count("#if LINUX_VERSION_IS_GEQ(6,12,114)") != 5:
+    raise SystemExit("ERROR: failed to update all five netns compatibility guards.")
+print("Patched mac80211 netns compatibility cutoff: kernel 6.12.114+ uses netns_immutable.")
+PY
+
 # Add the maintained PassWall package and LuCI feeds before feed metadata is updated.
 python3 - "$BUILD_DIR/feeds.conf.default" "$PASSWALL_PACKAGES_REF" "$PASSWALL_LUCI_REF" <<'PY'
 from pathlib import Path
@@ -230,6 +256,7 @@ cp .config "$OUT/build.config"
   echo "MENTOHUST_COMMIT=$(git -C "$MENTOHUST_SRC_DIR" rev-parse HEAD)"
   echo "ARGON_REF=$ARGON_REF"
   echo "ARGON_COMMIT=$(git -C "$ARGON_SRC_DIR" rev-parse HEAD)"
+  echo "MAC80211_NETNS_COMPAT=6.12.114+:netns_immutable"
   cat "$ROOT_DIR/work/CORE-INFO.txt"
 } > "$OUT/BUILD-INFO.txt"
 
