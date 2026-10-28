@@ -9,10 +9,11 @@ UA3F_REF="${UA3F_REF:-v3.7.0}"
 OPENCLASH_REF="${OPENCLASH_REF:-master}"
 PASSWALL_LUCI_REF="${PASSWALL_LUCI_REF:-main}"
 PASSWALL_PACKAGES_REF="${PASSWALL_PACKAGES_REF:-main}"
+ARGON_REF="${ARGON_REF:-v3.1.0}"
 INCLUDE_MIHOMO_CORE="${INCLUDE_MIHOMO_CORE:-false}"
 
 mkdir -p "$ROOT_DIR/work"
-rm -rf "$BUILD_DIR" "$ROOT_DIR/work/OpenClash-src" "$ROOT_DIR/work/MentoHUST-src"
+rm -rf "$BUILD_DIR" "$ROOT_DIR/work/OpenClash-src" "$ROOT_DIR/work/MentoHUST-src" "$ROOT_DIR/work/Argon-src"
 git clone --depth 1 --branch "$LEDE_REF" "$LEDE_REPO" "$BUILD_DIR"
 cd "$BUILD_DIR"
 
@@ -99,6 +100,16 @@ test -f "$ROOT_DIR/work/OpenClash-src/luci-app-openclash/Makefile" || {
 rm -rf package/luci-app-openclash
 cp -a "$ROOT_DIR/work/OpenClash-src/luci-app-openclash" package/luci-app-openclash
 
+# Pin the well-established Argon theme to the current stable upstream release.
+ARGON_SRC_DIR="$ROOT_DIR/work/Argon-src"
+git clone --depth 1 --branch "$ARGON_REF" https://github.com/jerrykuku/luci-theme-argon.git "$ARGON_SRC_DIR"
+test -f "$ARGON_SRC_DIR/Makefile" || {
+  echo 'ERROR: Argon theme Makefile not found.' >&2
+  exit 1
+}
+rm -rf package/luci-theme-argon
+cp -a "$ARGON_SRC_DIR" package/luci-theme-argon
+
 cp "$ROOT_DIR/configs/packages.config" .config
 make defconfig
 
@@ -113,6 +124,7 @@ for package in \
   kmod-nf-conntrack-netlink kmod-sched-core luci-app-openclash dnsmasq-full \
   luci-app-passwall mentohust luci-app-mentohust libpcap \
   luci-proto-relay relayd iw kmod-nft-socket kmod-nft-nat \
+  luci-theme-argon luci-i18n-argon-config-zh-cn \
   kmod-nf-reject kmod-nf-reject6 kmod-tun kmod-inet-diag; do
   if ! grep -qx "CONFIG_PACKAGE_${package}=y" .config; then
     echo "ERROR: required package ${package} is missing or was dropped by Kconfig." >&2
@@ -216,6 +228,8 @@ cp .config "$OUT/build.config"
   echo "PASSWALL_PACKAGES_REF=$PASSWALL_PACKAGES_REF"
   echo "PASSWALL_PACKAGES_COMMIT=$(git -C "$BUILD_DIR/feeds/passwall_packages" rev-parse HEAD)"
   echo "MENTOHUST_COMMIT=$(git -C "$MENTOHUST_SRC_DIR" rev-parse HEAD)"
+  echo "ARGON_REF=$ARGON_REF"
+  echo "ARGON_COMMIT=$(git -C "$ARGON_SRC_DIR" rev-parse HEAD)"
   cat "$ROOT_DIR/work/CORE-INFO.txt"
 } > "$OUT/BUILD-INFO.txt"
 

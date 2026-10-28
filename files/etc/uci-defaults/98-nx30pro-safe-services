@@ -15,6 +15,13 @@ if [ -f /etc/config/openclash ]; then
     uci -q commit openclash
 fi
 
+# Argon is included in the image; set it as the first-boot default theme.
+if [ -f /etc/config/luci ]; then
+    uci -q set luci.main.mediaurlbase='/luci-static/argon'
+    uci -q set luci.main.lang='zh_cn'
+    uci -q commit luci
+fi
+
 # Enable STA-link recovery; the guard only acts on radios with a configured STA interface.
 if [ -x /etc/init.d/wifi-bridge-guard ]; then
     /etc/init.d/wifi-bridge-guard enable
