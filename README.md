@@ -9,7 +9,7 @@
 - UA3F：使用 TPROXY，保留指定的完整 QQBrowser UA；默认关闭可能因无合适 TC 上行接口而启动失败的 BPF TC offload
 - UA3F 依赖：`kmod-nft-queue`、`kmod-nft-tproxy`、`kmod-sched-bpf`、`libubox-lua`，并校验相关 netfilter 依赖在 Kconfig 后仍存在
 - 无线驱动构建兼容：针对 Linux 6.12.114+ 的 `netns_local` → `netns_immutable` 字段变化，更新 mac80211 backport 条件，修复此前 `struct net_device has no member named netns_local` 编译错误
-- PassWall：从 Openwrt-Passwall 官方维护的 luci 与 packages feeds 构建，使用 nftables 透明代理；显式禁用独立 SSR-Plus 页面，并关闭 PassWall 内部可选的 ShadowsocksR-libev client/server
+- PassWall：从 Openwrt-Passwall 官方维护的 luci 与 packages feeds 构建，使用 nftables 透明代理；显式禁用独立 SSR-Plus 页面、ShadowsocksR-libev、Shadowsocks Rust、Simple-Obfs 和 V2ray-plugin 可选组件；保留 Xray 与 sing-box 两个常用核心以控制镜像体积
 - 主题：加入 Jerrykuku 的 Argon 稳定版 v3.1.0，默认深色/浅色可切换并设置为默认主题，附带 Argon 配置页与 LuCI 简体中文基础语言包；主题包官方介绍包括响应式布局和亮暗模式切换
 - MentoHUST：集成锐捷客户端守护进程 `mentohust` 和 `luci-app-mentohust` 管理页面；校园网账号、密码、网卡和认证参数需在刷机后自行填写
 - Wi-Fi 中继恢复：附带 `wifi-bridge-guard`，每 60 秒检查已配置的 STA 上行，连续 3 次未连接后尝试恢复对应 radio；每个 radio 至多每 10 分钟恢复一次
@@ -40,6 +40,6 @@ PassWall 和 OpenClash 同时装入镜像，但不要在未验证规则的情况
 
 向 `main` 提交 `configs/**`、`scripts/**`、`files/**` 等文件会触发 GitHub Actions。构建成功后会上传 `NX30Pro-LEDE-UA3F-OpenClash` artifact，包括设备镜像、`build.config`、`BUILD-INFO.txt` 与 `SHA256SUMS`。
 
-构建日志会记录 LEDE、UA3F、OpenClash、PassWall 两个 feed、MentoHUST 与 Argon 主题的 commit。构建脚本会检查 sysupgrade 包内的 kernel + rootfs 总大小，超过 60 MiB 会直接失败，避免发布超出 64 MiB UBI 分区安全余量的镜像。构建成功仍只表示编译器生成了镜像，**不等于已在 NX30 Pro 实机验证可刷或可运行**。刷机前必须检查 `BUILD-INFO.txt`、校验 `SHA256SUMS`，并确认所选文件是适用的 sysupgrade 镜像；不要覆盖 U-Boot、BL2 或 FIP 分区。
+构建日志会记录 LEDE、UA3F、OpenClash、PassWall 两个 feed、MentoHUST 与 Argon 主题的 commit。构建脚本会检查 sysupgrade 包内的 kernel + rootfs 总大小，超过 60 MiB 会直接失败，避免发布超出 64 MiB UBI 分区安全余量的镜像。为给该限制留出足够余量，默认不打包 Mihomo 核心以及 PassWall 的 Shadowsocks Rust、Simple-Obfs 和 V2ray-plugin 可选组件；Xray 与 sing-box 仍保留。构建成功仍只表示编译器生成了镜像，**不等于已在 NX30 Pro 实机验证可刷或可运行**。刷机前必须检查 `BUILD-INFO.txt`、校验 `SHA256SUMS`，并确认所选文件是适用的 sysupgrade 镜像；不要覆盖 U-Boot、BL2 或 FIP 分区。
 
 详见 [docs/FLASHING.md](docs/FLASHING.md)。

@@ -168,6 +168,12 @@ if grep -qx 'CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Client=
   echo 'ERROR: PassWall SSR-libev engines should stay disabled for this build.' >&2
   exit 1
 fi
+if grep -qx 'CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Client=y' .config || \
+   grep -qx 'CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Simple_Obfs=y' .config || \
+   grep -qx 'CONFIG_PACKAGE_luci-app-passwall_INCLUDE_V2ray_Plugin=y' .config; then
+  echo 'ERROR: optional PassWall Rust/obfs/plugin components must remain disabled to preserve flash space.' >&2
+  exit 1
+fi
 
 # Install first-boot defaults and the self-recovery helper into the rootfs overlay.
 mkdir -p files/etc/uci-defaults files/etc/init.d files/etc/config files/usr/sbin
