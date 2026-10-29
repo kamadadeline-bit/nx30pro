@@ -16,7 +16,7 @@ on:
         description: 'Preinstall a SHA-256 verified Linux ARM64 Mihomo core (does not fix runtime OOM)'
         required: true
         type: boolean
-        default: true
+        default: false
       lede_ref:
         description: 'coolsnowwolf/lede branch or tag'
         required: true
@@ -49,7 +49,8 @@ jobs:
       UA3F_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ua3f_ref || 'v3.7.0' }}
       OPENCLASH_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.openclash_ref || 'master' }}
       ARGON_REF: v3.1.0
-      INCLUDE_MIHOMO_CORE: ${{ github.event_name == 'push' && 'true' || (inputs.include_mihomo_core && 'true' || 'false') }}
+      # Keep Mihomo outside the flash image by default; install it later only if needed.
+      INCLUDE_MIHOMO_CORE: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mihomo_core && 'true' || 'false' }}
     steps:
       - name: Checkout dedicated NX30 Pro build configuration
         uses: actions/checkout@v4
@@ -84,7 +85,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: NX30Pro-LEDE-UA3F-OpenClash
-          path: work/openwrt/bin/targets/mediatek/filogic/*
+          path: |
+            work/openwrt/bin/targets/mediatek/filogic/openwrt-mediatek-filogic-h3c_magic-nx30-pro-squashfs-sysupgrade.bin
+            work/openwrt/bin/targets/mediatek/filogic/openwrt-mediatek-filogic-h3c_magic-nx30-pro-initramfs-kernel.bin
+            work/openwrt/bin/targets/mediatek/filogic/openwrt-mediatek-filogic-h3c_magic-nx30-pro.manifest
+            work/openwrt/bin/targets/mediatek/filogic/BUILD-INFO.txt
+            work/openwrt/bin/targets/mediatek/filogic/SHA256SUMS
+            work/openwrt/bin/targets/mediatek/filogic/build.config
+            work/openwrt/bin/targets/mediatek/filogic/config.buildinfo
+            work/openwrt/bin/targets/mediatek/filogic/feeds.buildinfo
+            work/openwrt/bin/targets/mediatek/filogic/profiles.json
+            work/openwrt/bin/targets/mediatek/filogic/version.buildinfo
           if-no-files-found: error
           retention-days: 14
 

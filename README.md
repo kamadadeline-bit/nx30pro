@@ -14,7 +14,7 @@
 - MentoHUST：集成锐捷客户端守护进程 `mentohust` 和 `luci-app-mentohust` 管理页面；校园网账号、密码、网卡和认证参数需在刷机后自行填写
 - Wi-Fi 中继恢复：附带 `wifi-bridge-guard`，每 60 秒检查已配置的 STA 上行，连续 3 次未连接后尝试恢复对应 radio；每个 radio 至多每 10 分钟恢复一次
 - 无线中继协议：加入 `relayd` 与 `luci-proto-relay`，用于需要 relayd 的非 WDS 中继组网
-- 保留现有 OpenClash 包并预置经过 SHA-256 校验的 ARM64 Mihomo 核心；UA3F 与 OpenClash 首次启动均保持禁用，避免在确认规则前自动接管流量
+- 保留 OpenClash 管理界面，但默认不把 Mihomo 核心塞进固件；如确实需要 OpenClash，可在刷机后通过管理界面下载对应核心。这样可显著缩小镜像，避免超过 NX30 Pro 64 MiB UBI 分区容量
 
 ## 管理界面主题
 
@@ -40,6 +40,6 @@ PassWall 和 OpenClash 同时装入镜像，但不要在未验证规则的情况
 
 向 `main` 提交 `configs/**`、`scripts/**`、`files/**` 等文件会触发 GitHub Actions。构建成功后会上传 `NX30Pro-LEDE-UA3F-OpenClash` artifact，包括设备镜像、`build.config`、`BUILD-INFO.txt` 与 `SHA256SUMS`。
 
-构建日志会记录 LEDE、UA3F、OpenClash、PassWall 两个 feed、MentoHUST 与 Argon 主题的 commit。构建成功只表示编译器生成了镜像，**不等于已在 NX30 Pro 实机验证可刷或可运行**。刷机前必须检查 `BUILD-INFO.txt`、校验 `SHA256SUMS`，并确认所选文件是适用的 sysupgrade 镜像；不要覆盖 U-Boot、BL2 或 FIP 分区。
+构建日志会记录 LEDE、UA3F、OpenClash、PassWall 两个 feed、MentoHUST 与 Argon 主题的 commit。构建脚本会检查 sysupgrade 包内的 kernel + rootfs 总大小，超过 60 MiB 会直接失败，避免发布超出 64 MiB UBI 分区安全余量的镜像。构建成功仍只表示编译器生成了镜像，**不等于已在 NX30 Pro 实机验证可刷或可运行**。刷机前必须检查 `BUILD-INFO.txt`、校验 `SHA256SUMS`，并确认所选文件是适用的 sysupgrade 镜像；不要覆盖 U-Boot、BL2 或 FIP 分区。
 
 详见 [docs/FLASHING.md](docs/FLASHING.md)。

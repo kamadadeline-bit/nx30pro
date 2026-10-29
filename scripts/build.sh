@@ -233,9 +233,28 @@ make -j"$(nproc)" V=s
 
 OUT="$BUILD_DIR/bin/targets/mediatek/filogic"
 test -d "$OUT" || { echo 'ERROR: expected target output directory not found.' >&2; exit 1; }
-if ! find "$OUT" -maxdepth 1 -type f -name '*h3c*nx30*pro*sysupgrade.bin' | grep -q .; then
+SYSUPGRADE_IMAGE="$(find "$OUT" -maxdepth 1 -type f -name '*h3c*nx30*pro*sysupgrade.bin' -print -quit)"
+if [[ -z "$SYSUPGRADE_IMAGE" ]]; then
   echo 'ERROR: build finished but the NX30 Pro sysupgrade image was not generated.' >&2
   find "$OUT" -maxdepth 1 -type f -printf '%f\n' | sort || true
+  exit 1
+fi
+
+# NX30 Pro has a 64 MiB UBI partition and IMAGE_SIZE=65536k.
+# Check the actual kernel + SquashFS payload stored in the sysupgrade tar.
+# Keep a 4 MiB safety margin; never publish an image that is too large for UBI.
+TAR_PREFIX="sysupgrade-h3c_magic-nx30-pro"
+KERNEL_BYTES="$(tar -xOf "$SYSUPGRADE_IMAGE" "$TAR_PREFIX/kernel" | wc -c | tr -d ' ')"
+ROOTFS_BYTES="$(tar -xOf "$SYSUPGRADE_IMAGE" "$TAR_PREFIX/root" | wc -c | tr -d ' ')"
+PAYLOAD_BYTES=$((KERNEL_BYTES + ROOTFS_BYTES))
+MAX_PAYLOAD_BYTES=$((60 * 1024 * 1024))
+echo "NX30PRO_KERNEL_BYTES=$KERNEL_BYTES"
+echo "NX30PRO_ROOTFS_BYTES=$ROOTFS_BYTES"
+echo "NX30PRO_KERNEL_PLUS_ROOTFS_BYTES=$PAYLOAD_BYTES"
+echo "NX30PRO_MAX_SAFE_PAYLOAD_BYTES=$MAX_PAYLOAD_BYTES"
+if (( PAYLOAD_BYTES > MAX_PAYLOAD_BYTES )); then
+  echo "ERROR: NX30 Pro kernel + rootfs payload ($PAYLOAD_BYTES bytes) exceeds conservative 60 MiB limit for its 64 MiB UBI partition." >&2
+  echo "Do not flash this image. Reduce optional packages or disable embedded Mihomo core." >&2
   exit 1
 fi
 
@@ -257,6 +276,10 @@ cp .config "$OUT/build.config"
   echo "ARGON_REF=$ARGON_REF"
   echo "ARGON_COMMIT=$(git -C "$ARGON_SRC_DIR" rev-parse HEAD)"
   echo "MAC80211_NETNS_COMPAT=6.12.114+:netns_immutable"
+  echo "NX30PRO_KERNEL_BYTES=$KERNEL_BYTES"
+  echo "NX30PRO_ROOTFS_BYTES=$ROOTFS_BYTES"
+  echo "NX30PRO_KERNEL_PLUS_ROOTFS_BYTES=$PAYLOAD_BYTES"
+  echo "NX30PRO_MAX_SAFE_PAYLOAD_BYTES=$MAX_PAYLOAD_BYTES"
   cat "$ROOT_DIR/work/CORE-INFO.txt"
 } > "$OUT/BUILD-INFO.txt"
 
