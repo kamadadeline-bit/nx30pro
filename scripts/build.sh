@@ -137,7 +137,7 @@ old_sqm_dep = (
     "\t+kmod-sched-cake"
 )
 new_sqm_dep = (
-    "DEPENDS:=+tc +ip-full +kmod-sched-core +kmod-ifb +nftables \\\n"
+    "DEPENDS:=+tc +ip-full +kmod-sched-core +kmod-ifb +nftables-json \\\n"
     "\t+kmod-sched-cake"
 )
 if sqm_text.count(old_sqm_dep) != 1:
@@ -253,13 +253,13 @@ content = content.replace("./htdocs/", "$(TOPDIR)/package/UA3F/htdocs/")
 # kmod-nft-queue (NFQUEUE/desync) are installed. Do not pull in the legacy
 # iptables extension stack: it reintroduces kmod-ipt-raw and is not needed here.
 old_dep = "\tDEPENDS:=$(GO_ARCH_DEPENDS) +luci-compat +ipset +iptables +iptables-mod-tproxy +iptables-mod-extra +iptables-mod-ipopt +iptables-mod-nfqueue +iptables-mod-conntrack-extra +kmod-nf-conntrack-netlink"
-new_dep = "\tDEPENDS:=$(GO_ARCH_DEPENDS) +luci-compat +nftables +kmod-nft-tproxy +kmod-nft-queue +kmod-sched-bpf +libubox-lua +kmod-nf-conntrack-netlink"
+new_dep = "\tDEPENDS:=$(GO_ARCH_DEPENDS) +luci-compat +nftables-json +kmod-nft-tproxy +kmod-nft-queue +kmod-sched-bpf +libubox-lua +kmod-nf-conntrack-netlink"
 if content.count(old_dep) != 1:
     raise SystemExit("ERROR: expected UA3F legacy iptables dependency line was not found exactly once.")
 content = content.replace(old_dep, new_dep)
 if "iptables-mod-conntrack-extra" in content or "iptables-mod-tproxy" in content:
     raise SystemExit("ERROR: UA3F legacy iptables package dependencies remain.")
-if "+nftables" not in content or "+kmod-nft-tproxy" not in content or "+kmod-nft-queue" not in content:
+if "+nftables-json" not in content or "+kmod-nft-tproxy" not in content or "+kmod-nft-queue" not in content:
     raise SystemExit("ERROR: UA3F nftables dependency set is incomplete.")
 if "../go.mod" in content or "./files/" in content or "./luasrc/" in content or "./htdocs/" in content:
     raise SystemExit("UA3F Makefile path normalization incomplete.")
@@ -286,7 +286,7 @@ grep -qx "$TARGET_PROFILE_LINE" .config || {
   exit 1
 }
 for package in \
-  ua3f nftables kmod-nft-queue kmod-nft-tproxy kmod-sched-bpf libubox-lua \
+  ua3f nftables-json kmod-nft-queue kmod-nft-tproxy kmod-sched-bpf libubox-lua \
   kmod-nft-core kmod-nfnetlink-queue kmod-nf-tproxy kmod-nf-conntrack \
   kmod-nf-conntrack-netlink kmod-sched-core dnsmasq-full \
   luci-app-passwall mentohust luci-app-mentohust libpcap \
