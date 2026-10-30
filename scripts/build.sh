@@ -251,8 +251,7 @@ if cm.count(old) != 1:
 cm = cm.replace(old, new)
 
 # Refuse to build if FindCURL still resolves the static archive on OpenWrt.
-find_anchor = "find_package(CURL REQUIRED)\\n"
-if cm.count(find_anchor) != 1:
+if cm.count("find_package(CURL REQUIRED)") != 1:
     raise SystemExit("ERROR: ESurfingClient find_package(CURL) anchor was not found exactly once.")
 find_guard = r'''find_package(CURL REQUIRED)
 
@@ -274,7 +273,7 @@ if "-DCURL_STATICLIB" in mk:
     raise SystemExit("ERROR: ESurfingClient still defines CURL_STATICLIB for shared libcurl.")
 if "DEPENDS:=+libcurl" not in mk:
     raise SystemExit("ERROR: ESurfingClient runtime libcurl dependency is missing.")
-if "if (__OPENWRT__)\n        # OpenWrt ships libcurl" not in cm:
+if "if (__OPENWRT__)\n        # Prefer OpenWrt's shared libcurl" not in cm:
     raise SystemExit("ERROR: OpenWrt shared-libcurl selection patch did not apply.")
 print("Patched ESurfingClient to use shared libcurl with explicit runtime dependency.")
 PY
