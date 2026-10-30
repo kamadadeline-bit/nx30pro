@@ -125,6 +125,15 @@ rm -rf package/esurfingclient package/luci-app-esurfingclient
 cp -a "$ESURFING_SRC_DIR/esurfingclient" package/esurfingclient
 cp -a "$ESURFING_SRC_DIR/luci-app-esurfingclient" package/luci-app-esurfingclient
 
+# ESurfingClient's static link needs curl's staging headers and libcurl.a.
+# PKG_BUILD_DEPENDS names the source package (PKG_NAME=curl), not the binary
+# library subpackage (libcurl).
+sed -i 's/^PKG_BUILD_DEPENDS:=libcurl$/PKG_BUILD_DEPENDS:=curl/' package/esurfingclient/Makefile
+grep -qx 'PKG_BUILD_DEPENDS:=curl' package/esurfingclient/Makefile || {
+  echo 'ERROR: ESurfingClient curl build dependency normalization failed.' >&2
+  exit 1
+}
+
 UU_SRC_DIR="$ROOT_DIR/work/UU-src"
 git clone --depth 1 --branch "$UU_REF" https://github.com/xiaodoudou/luci-app-uugamebooster.git "$UU_SRC_DIR"
 if ! command -v zig >/dev/null 2>&1 && [ ! -x "$HOME/zig/zig" ]; then
@@ -195,7 +204,7 @@ for package in \
   luci-app-uugamebooster wpad-openssl \
   luci-proto-relay relayd iw kmod-nft-socket kmod-nft-nat \
   luci-theme-argon luci-app-argon-config \
-  luci-app-sqm sqm-scripts tc kmod-ifb kmod-sched-cake \
+  luci-app-sqm sqm-scripts tc-tiny kmod-ifb kmod-sched-cake \
   kmod-nf-reject kmod-nf-reject6 kmod-tun kmod-ipt-nat unshare libstdcpp6; do
   if ! grep -qx "CONFIG_PACKAGE_${package}=y" .config; then
     echo "ERROR: required package ${package} is missing or was dropped by Kconfig." >&2
