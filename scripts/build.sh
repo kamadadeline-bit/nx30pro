@@ -88,6 +88,50 @@ PY
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
+# Trim LEDE's oversized router seed instead of fighting its forced defaults
+# one package at a time. Keep only the base network stack here; Campus SY
+# explicitly selects its own feature packages in packages.common.config.
+python3 - "$BUILD_DIR/include/target.mk" "$BUILD_DIR/feeds/luci/modules/luci-mod-admin-full/Makefile" <<'PY'
+from pathlib import Path
+import sys
+
+target_mk = Path(sys.argv[1])
+luci_admin_mk = Path(sys.argv[2])
+
+text = target_mk.read_text(encoding="utf-8")
+start_token = "DEFAULT_PACKAGES.router:=\\\n"
+end_token = "\n\nifneq ($(DUMP),)"
+if text.count(start_token) != 1:
+    raise SystemExit("ERROR: could not uniquely locate DEFAULT_PACKAGES.router in include/target.mk")
+start = text.index(start_token)
+end = text.index(end_token, start)
+minimal = """DEFAULT_PACKAGES.router:=\\
+\tdnsmasq-full firewall4 nftables-json iptables ppp ppp-mod-pppoe \\
+\todhcp6c odhcpd-ipv6only ip6tables libip6tc kmod-ipt-nat6"""
+text = text[:start] + minimal + text[end:]
+target_mk.write_text(text, encoding="utf-8")
+if "luci-app-ssr-plus" in text or "luci-app-ddns" in text:
+    raise SystemExit("ERROR: optional apps remain in the router default package seed.")
+
+# OUI badges are optional MAC-vendor decorations, not required for LuCI admin.
+# Drop the hard dependency but preserve the full network/status/system UI.
+text = luci_admin_mk.read_text(encoding="utf-8")
+old_dep = "LUCI_DEPENDS:=+luci-base +luci-mod-status +luci-mod-system +luci-mod-network +luci-app-oui"
+new_dep = "LUCI_DEPENDS:=+luci-base +luci-mod-status +luci-mod-system +luci-mod-network"
+if text.count(old_dep) != 1:
+    raise SystemExit("ERROR: expected luci-mod-admin-full OUI dependency was not found exactly once.")
+luci_admin_mk.write_text(text.replace(old_dep, new_dep), encoding="utf-8")
+if "luci-app-oui" in luci_admin_mk.read_text(encoding="utf-8"):
+    raise SystemExit("ERROR: optional OUI dependency was not removed.")
+
+# The standalone SSR-Plus feed package is not part of Campus SY; removing its
+# feed link also removes its orphan Kconfig toggles and their hidden dependencies.
+ssr_pkg = Path("package/feeds/helloworld/luci-app-ssr-plus")
+if ssr_pkg.is_symlink() or ssr_pkg.exists():
+    ssr_pkg.unlink() if ssr_pkg.is_symlink() or ssr_pkg.is_file() else __import__("shutil").rmtree(ssr_pkg)
+print("Slimmed LEDE router defaults and removed optional LuCI OUI / SSR-Plus feed entries.")
+PY
+
 # Stage MentoHUST's daemon and its separate LuCI application as two OpenWrt packages.
 MENTOHUST_SRC_DIR="$ROOT_DIR/work/MentoHUST-src"
 git clone --depth 1 https://github.com/sbwml/luci-app-mentohust.git "$MENTOHUST_SRC_DIR"
@@ -211,6 +255,8 @@ for package in \
   dogcom luci-app-dogcom esurfingclient luci-app-esurfingclient libcurl \
   luci-app-uugamebooster wpad-openssl \
   luci-proto-relay relayd iw kmod-nft-socket kmod-nft-nat \
+  luci-base luci-mod-admin-full luci-mod-network luci-mod-status luci-mod-system \
+  luci-app-firewall luci-proto-ppp uhttpd uhttpd-mod-ubus rpcd-mod-rrdns \
   luci-theme-argon luci-app-argon-config \
   luci-app-sqm sqm-scripts tc-tiny kmod-ifb kmod-sched-cake \
   kmod-nf-reject kmod-nf-reject6 kmod-tun kmod-ipt-nat unshare libstdcpp; do
@@ -230,13 +276,25 @@ done
 
 # Reject unrequested proxy frontends and unrelated acceleration apps.
 for forbidden in \
+  luci luci-light luci-theme-bootstrap luci-app-oui luci-app-package-manager \
   luci-app-openclash luci-app-ssr-plus luci-app-turboacc luci-app-minieap \
   luci-app-arpbind luci-app-autoreboot luci-app-ddns luci-app-filetransfer \
-  luci-app-nlbwmon luci-app-oui luci-app-package-manager luci-app-rclone \
-  luci-app-upnp luci-app-vlmcsd luci-app-vsftpd luci-app-wol \
-  luci-theme-bootstrap; do
+  luci-app-nlbwmon luci-app-rclone luci-app-upnp luci-app-vlmcsd \
+  luci-app-vsftpd luci-app-wol luci-app-accesscontrol \
+  ddns-scripts-aliyun ddns-scripts_dnspod ddns-scripts_aliyun \
+  ddns-scripts coremark block-mount kmod-nf-nathelper kmod-nf-nathelper-extra \
+  kmod-ipt-raw default-settings ipt2socks; do
   if grep -qx "CONFIG_PACKAGE_${forbidden}=y" .config; then
     echo "ERROR: unrequested package ${forbidden} was selected." >&2
+    exit 1
+  fi
+done
+
+# These meta-collections must stay off: they re-add package-manager, Bootstrap,
+# and IPv6 UI components that Campus SY does not request.
+for forbidden in luci luci-light luci-app-oui luci-app-package-manager luci-theme-bootstrap luci-proto-ipv6; do
+  if grep -qx "CONFIG_PACKAGE_${forbidden}=y" .config; then
+    echo "ERROR: unwanted LuCI collection/component ${forbidden} was selected." >&2
     exit 1
   fi
 done
