@@ -91,12 +91,13 @@ PY
 # Trim LEDE's oversized router seed instead of fighting its forced defaults
 # one package at a time. Keep only the base network stack here; Campus SY
 # explicitly selects its own feature packages in packages.common.config.
-python3 - "$BUILD_DIR/include/target.mk" "$BUILD_DIR/feeds/luci/modules/luci-mod-admin-full/Makefile" <<'PY'
+python3 - "$BUILD_DIR/include/target.mk" "$BUILD_DIR/feeds/luci/modules/luci-mod-admin-full/Makefile" "$BUILD_DIR/feeds/packages/net/sqm-scripts/Makefile" <<'PY'
 from pathlib import Path
 import sys
 
 target_mk = Path(sys.argv[1])
 luci_admin_mk = Path(sys.argv[2])
+sqm_mk = Path(sys.argv[3])
 
 text = target_mk.read_text(encoding="utf-8")
 start_token = "DEFAULT_PACKAGES.router:=" + chr(92) + "\n"
@@ -125,6 +126,26 @@ if text.count(old_dep) != 1:
 luci_admin_mk.write_text(text.replace(old_dep, new_dep), encoding="utf-8")
 if "luci-app-oui" in luci_admin_mk.read_text(encoding="utf-8"):
     raise SystemExit("ERROR: optional OUI dependency was not removed.")
+
+# The Coolsnowwolf SQM package still carries legacy iptables-only dependencies.
+# Campus SY uses firewall4/nftables, so switch SQM to the upstream nftables
+# dependency set while retaining tc, CAKE and IFB runtime support.
+sqm_text = sqm_mk.read_text(encoding="utf-8")
+old_sqm_dep = (
+    "DEPENDS:=+tc +kmod-sched-core +kmod-ifb +iptables \\\n"
+    "\t+iptables-mod-ipopt +iptables-mod-conntrack-extra \\\n"
+    "\t+kmod-sched-cake"
+)
+new_sqm_dep = (
+    "DEPENDS:=+tc +ip-full +kmod-sched-core +kmod-ifb +nftables \\\n"
+    "\t+kmod-sched-cake"
+)
+if sqm_text.count(old_sqm_dep) != 1:
+    raise SystemExit("ERROR: expected legacy iptables dependency in sqm-scripts was not found exactly once.")
+sqm_mk.write_text(sqm_text.replace(old_sqm_dep, new_sqm_dep), encoding="utf-8")
+if "iptables-mod-conntrack-extra" in sqm_mk.read_text(encoding="utf-8"):
+    raise SystemExit("ERROR: SQM legacy iptables dependency was not removed.")
+print("Patched SQM dependencies for firewall4/nftables; kept tc, CAKE and IFB.")
 
 # The standalone SSR-Plus feed package is not part of Campus SY; removing its
 # feed link also removes its orphan Kconfig toggles and their hidden dependencies.
