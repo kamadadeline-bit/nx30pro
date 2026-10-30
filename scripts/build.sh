@@ -247,9 +247,24 @@ content = content.replace("po2lmo ./po/zh_cn/ua3f.po", "po2lmo $(TOPDIR)/package
 content = content.replace("./files/", "$(TOPDIR)/package/UA3F/files/")
 content = content.replace("./luasrc/", "$(TOPDIR)/package/UA3F/luasrc/")
 content = content.replace("./htdocs/", "$(TOPDIR)/package/UA3F/htdocs/")
+
+# Campus SY uses UA3F's native nftables backend. On OpenWrt, detectFirewallBackend()
+# selects nftables whenever nft + kmod-nft-tproxy (TPROXY) and, where needed,
+# kmod-nft-queue (NFQUEUE/desync) are installed. Do not pull in the legacy
+# iptables extension stack: it reintroduces kmod-ipt-raw and is not needed here.
+old_dep = "\tDEPENDS:=$(GO_ARCH_DEPENDS) +luci-compat +ipset +iptables +iptables-mod-tproxy +iptables-mod-extra +iptables-mod-ipopt +iptables-mod-nfqueue +iptables-mod-conntrack-extra +kmod-nf-conntrack-netlink"
+new_dep = "\tDEPENDS:=$(GO_ARCH_DEPENDS) +luci-compat +nftables +kmod-nft-tproxy +kmod-nft-queue +kmod-sched-bpf +libubox-lua +kmod-nf-conntrack-netlink"
+if content.count(old_dep) != 1:
+    raise SystemExit("ERROR: expected UA3F legacy iptables dependency line was not found exactly once.")
+content = content.replace(old_dep, new_dep)
+if "iptables-mod-conntrack-extra" in content or "iptables-mod-tproxy" in content:
+    raise SystemExit("ERROR: UA3F legacy iptables package dependencies remain.")
+if "+nftables" not in content or "+kmod-nft-tproxy" not in content or "+kmod-nft-queue" not in content:
+    raise SystemExit("ERROR: UA3F nftables dependency set is incomplete.")
 if "../go.mod" in content or "./files/" in content or "./luasrc/" in content or "./htdocs/" in content:
     raise SystemExit("UA3F Makefile path normalization incomplete.")
 path.write_text(content, encoding="utf-8")
+print("Patched UA3F package dependencies to native nftables TPROXY/NFQUEUE backend.")
 PY
 
 # Pin the well-established Argon theme to the current stable upstream release.
@@ -271,7 +286,7 @@ grep -qx "$TARGET_PROFILE_LINE" .config || {
   exit 1
 }
 for package in \
-  ua3f kmod-nft-queue kmod-nft-tproxy kmod-sched-bpf libubox-lua \
+  ua3f nftables kmod-nft-queue kmod-nft-tproxy kmod-sched-bpf libubox-lua \
   kmod-nft-core kmod-nfnetlink-queue kmod-nf-tproxy kmod-nf-conntrack \
   kmod-nf-conntrack-netlink kmod-sched-core dnsmasq-full \
   luci-app-passwall mentohust luci-app-mentohust libpcap \
@@ -306,7 +321,9 @@ for forbidden in \
   luci-app-vsftpd luci-app-wol luci-app-accesscontrol \
   ddns-scripts-aliyun ddns-scripts_dnspod ddns-scripts_aliyun \
   ddns-scripts coremark block-mount kmod-nf-nathelper kmod-nf-nathelper-extra \
-  kmod-ipt-raw default-settings ipt2socks; do
+  kmod-ipt-raw kmod-ipt-conntrack-extra iptables-mod-conntrack-extra \
+  iptables-mod-tproxy iptables-mod-extra iptables-mod-ipopt iptables-mod-nfqueue \
+  default-settings ipt2socks; do
   if grep -qx "CONFIG_PACKAGE_${forbidden}=y" .config; then
     echo "ERROR: unrequested package ${forbidden} was selected." >&2
     exit 1
