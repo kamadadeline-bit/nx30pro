@@ -289,7 +289,7 @@ for package in \
   ua3f nftables-json kmod-nft-queue kmod-nft-tproxy kmod-sched-bpf libubox-lua \
   kmod-nft-core kmod-nfnetlink-queue kmod-nf-tproxy kmod-nf-conntrack \
   kmod-nf-conntrack-netlink kmod-sched-core dnsmasq-full \
-  luci-app-passwall mentohust luci-app-mentohust libpcap \
+  luci-app-passwall ipt2socks mentohust luci-app-mentohust libpcap \
   dogcom luci-app-dogcom esurfingclient luci-app-esurfingclient libcurl \
   luci-app-uugamebooster wpad-openssl \
   luci-proto-relay relayd iw kmod-nft-socket kmod-nft-nat \
@@ -303,6 +303,17 @@ for package in \
     exit 1
   fi
 done
+
+# PassWall's Nftables Transparent Proxy Kconfig option selects ipt2socks
+# even when the Iptables Transparent Proxy option is disabled.
+if ! grep -qx 'CONFIG_PACKAGE_luci-app-passwall_Nftables_Transparent_Proxy=y' .config; then
+  echo 'ERROR: PassWall Nftables Transparent Proxy option was dropped by Kconfig.' >&2
+  exit 1
+fi
+if grep -qx 'CONFIG_PACKAGE_luci-app-passwall_Iptables_Transparent_Proxy=y' .config; then
+  echo 'ERROR: PassWall Iptables Transparent Proxy must remain disabled.' >&2
+  exit 1
+fi
 
 # Assert the four PPP / PPPoE runtime layers used by FlashNet.
 for ppp_package in ppp ppp-mod-pppoe kmod-ppp kmod-pppoe; do
@@ -323,7 +334,7 @@ for forbidden in \
   ddns-scripts coremark block-mount kmod-nf-nathelper kmod-nf-nathelper-extra \
   kmod-ipt-raw kmod-ipt-conntrack-extra iptables-mod-conntrack-extra \
   iptables-mod-tproxy iptables-mod-extra iptables-mod-ipopt iptables-mod-nfqueue \
-  default-settings ipt2socks; do
+  default-settings; do
   if grep -qx "CONFIG_PACKAGE_${forbidden}=y" .config; then
     echo "ERROR: unrequested package ${forbidden} was selected." >&2
     exit 1
@@ -345,7 +356,7 @@ for forbidden in \
   luci-i18n-filetransfer-zh-cn luci-i18n-nlbwmon-zh-cn \
   luci-i18n-package-manager-zh-cn luci-i18n-ssr-plus-zh-cn \
   luci-i18n-upnp-zh-cn luci-i18n-vlmcsd-zh-cn luci-i18n-vsftpd-zh-cn \
-  luci-i18n-wol-zh-cn 3proxy dns2tcp nping ipt2socks vsftpd vlmcsd etherwake coremark htop default-settings; do
+  luci-i18n-wol-zh-cn 3proxy dns2tcp nping vsftpd vlmcsd etherwake coremark htop default-settings; do
   if grep -qx "CONFIG_PACKAGE_${forbidden}=y" .config; then
     echo "ERROR: unrequested package ${forbidden} was selected." >&2
     exit 1
