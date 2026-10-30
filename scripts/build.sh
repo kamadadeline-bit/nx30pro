@@ -6,18 +6,34 @@ BUILD_DIR="$ROOT_DIR/work/openwrt"
 LEDE_REPO="${LEDE_REPO:-https://github.com/coolsnowwolf/lede.git}"
 LEDE_REF="${LEDE_REF:-master}"
 UA3F_REF="${UA3F_REF:-v3.7.0}"
-OPENCLASH_REF="${OPENCLASH_REF:-master}"
 PASSWALL_LUCI_REF="${PASSWALL_LUCI_REF:-main}"
 PASSWALL_PACKAGES_REF="${PASSWALL_PACKAGES_REF:-main}"
 ARGON_REF="${ARGON_REF:-v3.1.0}"
-INCLUDE_MIHOMO_CORE="${INCLUDE_MIHOMO_CORE:-false}"
+ESURFING_REF="${ESURFING_REF:-v2.2.1-r7}"
+UU_REF="${UU_REF:-v2.2.2}"
+ZIG_VERSION="${ZIG_VERSION:-0.13.0}"
+DEVICE_PROFILE="${DEVICE_PROFILE:-h3c_magic-nx30-pro}"
+DEVICE_CONFIG="$ROOT_DIR/configs/devices/$DEVICE_PROFILE.config"
 
 mkdir -p "$ROOT_DIR/work"
-rm -rf "$BUILD_DIR" "$ROOT_DIR/work/OpenClash-src" "$ROOT_DIR/work/MentoHUST-src" "$ROOT_DIR/work/Argon-src"
+rm -rf "$BUILD_DIR" "$ROOT_DIR/work/MentoHUST-src" "$ROOT_DIR/work/Argon-src" \
+  "$ROOT_DIR/work/ESurfing-src" "$ROOT_DIR/work/Dogcom-src" "$ROOT_DIR/work/Dogcom-LuCI-src" "$ROOT_DIR/work/UU-src"
 git clone --depth 1 --branch "$LEDE_REF" "$LEDE_REPO" "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-# Hard guard: fail before compilation if this LEDE ref does not support NX30 Pro.
+# Shared package choices; separate device profile holds target/flash/driver data.
+case "$DEVICE_PROFILE" in
+  h3c_magic-nx30-pro)
+    TARGET_SUBDIR="mediatek/filogic"
+    TARGET_PROFILE_LINE='CONFIG_TARGET_mediatek_filogic_DEVICE_h3c_magic-nx30-pro=y'
+    SYSUPGRADE_GLOB='*h3c*nx30*pro*sysupgrade.bin'
+    ;;
+  *)
+    echo "ERROR: unknown/unimplemented DEVICE_PROFILE=$DEVICE_PROFILE" >&2
+    exit 1
+    ;;
+esac
+test -f "$DEVICE_CONFIG" || { echo "ERROR: device config missing: $DEVICE_CONFIG" >&2; exit 1; }
 grep -q 'TARGET_DEVICES += h3c_magic-nx30-pro' target/linux/mediatek/image/filogic.mk || {
   echo 'ERROR: selected LEDE ref has no h3c_magic-nx30-pro device profile.' >&2
   exit 1
@@ -87,6 +103,41 @@ rm -rf package/mentohust package/luci-app-mentohust
 cp -a "$MENTOHUST_SRC_DIR/mentohust" package/mentohust
 cp -a "$MENTOHUST_SRC_DIR/luci-app-mentohust" package/luci-app-mentohust
 
+# Stage the requested Dr.COM, ESurfing and UU client packages.
+DOGCOM_SRC_DIR="$ROOT_DIR/work/Dogcom-src"
+DOGCOM_LUCI_SRC_DIR="$ROOT_DIR/work/Dogcom-LuCI-src"
+git clone --depth 1 https://github.com/mchome/openwrt-dogcom.git "$DOGCOM_SRC_DIR"
+git clone --depth 1 https://github.com/mchome/luci-app-dogcom.git "$DOGCOM_LUCI_SRC_DIR"
+test -f "$DOGCOM_SRC_DIR/Makefile" && test -f "$DOGCOM_LUCI_SRC_DIR/Makefile" || {
+  echo 'ERROR: Dogcom core / LuCI package missing.' >&2; exit 1;
+}
+rm -rf package/openwrt-dogcom package/luci-app-dogcom
+cp -a "$DOGCOM_SRC_DIR" package/openwrt-dogcom
+cp -a "$DOGCOM_LUCI_SRC_DIR" package/luci-app-dogcom
+
+ESURFING_SRC_DIR="$ROOT_DIR/work/ESurfing-src"
+git clone --depth 1 --branch "$ESURFING_REF" https://github.com/BadGhost520/ESurfingClient-CVersion.git "$ESURFING_SRC_DIR"
+bash "$ESURFING_SRC_DIR/scripts/sync-version.sh" 2.2.1-r7
+test -f "$ESURFING_SRC_DIR/esurfingclient/Makefile" && test -f "$ESURFING_SRC_DIR/luci-app-esurfingclient/Makefile" || {
+  echo 'ERROR: ESurfingClient OpenWrt packages missing.' >&2; exit 1;
+}
+rm -rf package/esurfingclient package/luci-app-esurfingclient
+cp -a "$ESURFING_SRC_DIR/esurfingclient" package/esurfingclient
+cp -a "$ESURFING_SRC_DIR/luci-app-esurfingclient" package/luci-app-esurfingclient
+
+UU_SRC_DIR="$ROOT_DIR/work/UU-src"
+git clone --depth 1 --branch "$UU_REF" https://github.com/xiaodoudou/luci-app-uugamebooster.git "$UU_SRC_DIR"
+if ! command -v zig >/dev/null 2>&1 && [ ! -x "$HOME/zig/zig" ]; then
+  echo "ERROR: Zig $ZIG_VERSION is required for UU architecture shims." >&2; exit 1;
+fi
+if [ -x "$HOME/zig/zig" ]; then export PATH="$HOME/zig:$PATH"; fi
+sh "$UU_SRC_DIR/tools/build-preload.sh" "$UU_SRC_DIR/luci-app-uugamebooster/root/usr/lib/uuplugin"
+test -s "$UU_SRC_DIR/luci-app-uugamebooster/root/usr/lib/uuplugin/uu-view-preload-aarch64.so" || {
+  echo 'ERROR: UU aarch64 view-filter shim not generated.' >&2; exit 1;
+}
+rm -rf package/luci-app-uugamebooster
+cp -a "$UU_SRC_DIR/luci-app-uugamebooster" package/luci-app-uugamebooster
+
 # UA3F keeps its OpenWrt package Makefile under openwrt/ and Go sources at the repo root.
 # Stage a proper top-level package directory, then fix source paths for OpenWrt's build system.
 UA3F_SRC_DIR="$ROOT_DIR/work/UA3F-src"
@@ -117,15 +168,6 @@ if "../go.mod" in content or "./files/" in content or "./luasrc/" in content or 
 path.write_text(content, encoding="utf-8")
 PY
 
-# Add the upstream OpenClash LuCI package to this fresh source tree.
-git clone --depth 1 --branch "$OPENCLASH_REF" https://github.com/vernesong/OpenClash.git "$ROOT_DIR/work/OpenClash-src"
-test -f "$ROOT_DIR/work/OpenClash-src/luci-app-openclash/Makefile" || {
-  echo 'ERROR: OpenClash package Makefile not found in selected ref.' >&2
-  exit 1
-}
-rm -rf package/luci-app-openclash
-cp -a "$ROOT_DIR/work/OpenClash-src/luci-app-openclash" package/luci-app-openclash
-
 # Pin the well-established Argon theme to the current stable upstream release.
 ARGON_SRC_DIR="$ROOT_DIR/work/Argon-src"
 git clone --depth 1 --branch "$ARGON_REF" https://github.com/jerrykuku/luci-theme-argon.git "$ARGON_SRC_DIR"
@@ -136,22 +178,25 @@ test -f "$ARGON_SRC_DIR/Makefile" || {
 rm -rf package/luci-theme-argon
 cp -a "$ARGON_SRC_DIR" package/luci-theme-argon
 
-cp "$ROOT_DIR/configs/packages.config" .config
+cat "$ROOT_DIR/configs/packages.common.config" "$DEVICE_CONFIG" > .config
 make defconfig
 
-# Assert the target profile and the requested modules actually survive Kconfig.
-grep -qx 'CONFIG_TARGET_mediatek_filogic_DEVICE_h3c_magic-nx30-pro=y' .config || {
-  echo 'ERROR: NX30 Pro profile was not selected after make defconfig.' >&2
+# Assert target profile survived Kconfig.
+grep -qx "$TARGET_PROFILE_LINE" .config || {
+  echo "ERROR: target profile $DEVICE_PROFILE was dropped by Kconfig." >&2
   exit 1
 }
 for package in \
   ua3f kmod-nft-queue kmod-nft-tproxy kmod-sched-bpf libubox-lua \
   kmod-nft-core kmod-nfnetlink-queue kmod-nf-tproxy kmod-nf-conntrack \
-  kmod-nf-conntrack-netlink kmod-sched-core luci-app-openclash dnsmasq-full \
+  kmod-nf-conntrack-netlink kmod-sched-core dnsmasq-full \
   luci-app-passwall mentohust luci-app-mentohust libpcap \
+  dogcom luci-app-dogcom esurfingclient luci-app-esurfingclient libcurl \
+  luci-app-uugamebooster wpad-openssl \
   luci-proto-relay relayd iw kmod-nft-socket kmod-nft-nat \
   luci-theme-argon luci-app-argon-config \
-  kmod-nf-reject kmod-nf-reject6 kmod-tun kmod-inet-diag; do
+  luci-app-sqm sqm-scripts tc kmod-ifb kmod-sched-cake \
+  kmod-nf-reject kmod-nf-reject6 kmod-tun kmod-ipt-nat unshare libstdcpp6; do
   if ! grep -qx "CONFIG_PACKAGE_${package}=y" .config; then
     echo "ERROR: required package ${package} is missing or was dropped by Kconfig." >&2
     exit 1
@@ -175,59 +220,18 @@ if grep -qx 'CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Client=y'
   exit 1
 fi
 
-# Install first-boot defaults and the self-recovery helper into the rootfs overlay.
+# Install defaults, STA recovery helper, and user-supplied SQM Chinese resources.
 mkdir -p files/etc/uci-defaults files/etc/init.d files/etc/config files/usr/sbin
 cp "$ROOT_DIR/files/etc/uci-defaults/98-nx30pro-safe-services" files/etc/uci-defaults/
 cp "$ROOT_DIR/files/etc/init.d/wifi-bridge-guard" files/etc/init.d/
 cp "$ROOT_DIR/files/etc/config/wifi-bridge-guard" files/etc/config/
 cp "$ROOT_DIR/files/usr/sbin/wifi-bridge-guard" files/usr/sbin/
+tar -xzf "$ROOT_DIR/assets/sqm-i18n-data.tar.gz" -C files/
+test -s files/usr/lib/lua/luci/i18n/sqm.zh-cn.lmo || {
+  echo 'ERROR: SQM Chinese translation missing from rootfs overlay.' >&2; exit 1;
+}
 chmod 0755 files/etc/uci-defaults/98-nx30pro-safe-services
 chmod 0755 files/etc/init.d/wifi-bridge-guard files/usr/sbin/wifi-bridge-guard
-
-# Optionally preinstall a verified Mihomo Meta core. This does not fix runtime OOM.
-if [[ "$INCLUDE_MIHOMO_CORE" == "true" ]]; then
-  echo 'Fetching latest stable Mihomo ARM64 release asset...'
-  RELEASE_JSON="$ROOT_DIR/work/mihomo-release.json"
-  curl -fsSL --retry 3 https://api.github.com/repos/MetaCubeX/mihomo/releases/latest -o "$RELEASE_JSON"
-  read -r ASSET_URL EXPECTED_DIGEST ASSET_NAME < <(python3 - "$RELEASE_JSON" <<'PY'
-import json, re, sys
-release = json.load(open(sys.argv[1], encoding="utf-8"))
-assets = release.get("assets", [])
-choices = [
-    asset for asset in assets
-    if re.fullmatch(r"mihomo-linux-arm64-v[^/]+\.gz", asset.get("name", ""))
-]
-if not choices:
-    raise SystemExit("No stable mihomo-linux-arm64-v*.gz asset found in latest stable release")
-asset = sorted(choices, key=lambda item: item["name"])[-1]
-print(asset.get("browser_download_url", ""), asset.get("digest") or "", asset.get("name", ""))
-PY
-  )
-  test -n "$ASSET_URL" || { echo 'ERROR: Mihomo asset URL is empty.' >&2; exit 1; }
-  case "$EXPECTED_DIGEST" in
-    sha256:*) EXPECTED_DIGEST="${EXPECTED_DIGEST#sha256:}" ;;
-    *) echo 'ERROR: Mihomo asset has no GitHub SHA-256 digest; refusing to embed an unverified binary.' >&2; exit 1 ;;
-  esac
-
-  CORE_GZ="$ROOT_DIR/work/mihomo.gz"
-  curl -fL --retry 3 "$ASSET_URL" -o "$CORE_GZ"
-  ACTUAL_DIGEST="$(sha256sum "$CORE_GZ" | awk '{print $1}')"
-  [[ "$ACTUAL_DIGEST" == "$EXPECTED_DIGEST" ]] || {
-    echo 'ERROR: Mihomo SHA-256 mismatch.' >&2
-    exit 1
-  }
-  gzip -t "$CORE_GZ"
-  mkdir -p files/etc/openclash/core
-  gzip -dc "$CORE_GZ" > files/etc/openclash/core/clash_meta
-  chmod 0755 files/etc/openclash/core/clash_meta
-  file files/etc/openclash/core/clash_meta | grep -q 'ARM aarch64' || {
-    echo 'ERROR: Mihomo binary is not identified as ARM AArch64.' >&2
-    exit 1
-  }
-  echo "Included Mihomo asset: $ASSET_NAME" > "$ROOT_DIR/work/CORE-INFO.txt"
-else
-  echo 'Mihomo core embedding disabled by workflow input.' > "$ROOT_DIR/work/CORE-INFO.txt"
-fi
 
 echo 'Disk before downloads:'
 df -h .
@@ -237,11 +241,11 @@ echo 'Disk before compilation:'
 df -h .
 make -j"$(nproc)" V=s
 
-OUT="$BUILD_DIR/bin/targets/mediatek/filogic"
+OUT="$BUILD_DIR/bin/targets/$TARGET_SUBDIR"
 test -d "$OUT" || { echo 'ERROR: expected target output directory not found.' >&2; exit 1; }
-SYSUPGRADE_IMAGE="$(find "$OUT" -maxdepth 1 -type f -name '*h3c*nx30*pro*sysupgrade.bin' -print -quit)"
+SYSUPGRADE_IMAGE="$(find "$OUT" -maxdepth 1 -type f -name "$SYSUPGRADE_GLOB" -print -quit)"
 if [[ -z "$SYSUPGRADE_IMAGE" ]]; then
-  echo 'ERROR: build finished but the NX30 Pro sysupgrade image was not generated.' >&2
+  echo 'ERROR: build finished but the $DEVICE_PROFILE sysupgrade image was not generated.' >&2
   find "$OUT" -maxdepth 1 -type f -printf '%f\n' | sort || true
   exit 1
 fi
@@ -266,14 +270,18 @@ fi
 
 cp .config "$OUT/build.config"
 {
-  echo "DEVICE_PROFILE=h3c_magic-nx30-pro"
+  echo "DEVICE_PROFILE=$DEVICE_PROFILE"
   echo "LEDE_REPO=$LEDE_REPO"
   echo "LEDE_REF=$LEDE_REF"
   echo "LEDE_COMMIT=$(git rev-parse HEAD)"
   echo "UA3F_REF=$UA3F_REF"
   echo "UA3F_COMMIT=$(git -C "$UA3F_SRC_DIR" rev-parse HEAD)"
-  echo "OPENCLASH_REF=$OPENCLASH_REF"
-  echo "OPENCLASH_COMMIT=$(git -C "$ROOT_DIR/work/OpenClash-src" rev-parse HEAD)"
+  echo "ESURFING_REF=$ESURFING_REF"
+  echo "ESURFING_COMMIT=$(git -C "$ESURFING_SRC_DIR" rev-parse HEAD)"
+  echo "DOGCOM_COMMIT=$(git -C "$DOGCOM_SRC_DIR" rev-parse HEAD)"
+  echo "DOGCOM_LUCI_COMMIT=$(git -C "$DOGCOM_LUCI_SRC_DIR" rev-parse HEAD)"
+  echo "UU_REF=$UU_REF"
+  echo "UU_COMMIT=$(git -C "$UU_SRC_DIR" rev-parse HEAD)"
   echo "PASSWALL_LUCI_REF=$PASSWALL_LUCI_REF"
   echo "PASSWALL_LUCI_COMMIT=$(git -C "$BUILD_DIR/feeds/passwall_luci" rev-parse HEAD)"
   echo "PASSWALL_PACKAGES_REF=$PASSWALL_PACKAGES_REF"
@@ -281,12 +289,12 @@ cp .config "$OUT/build.config"
   echo "MENTOHUST_COMMIT=$(git -C "$MENTOHUST_SRC_DIR" rev-parse HEAD)"
   echo "ARGON_REF=$ARGON_REF"
   echo "ARGON_COMMIT=$(git -C "$ARGON_SRC_DIR" rev-parse HEAD)"
+  echo "SQM_I18N_SOURCE=uploaded luci-i18n-sqm 1.1.3-1 (Architecture all)"
   echo "MAC80211_NETNS_COMPAT=6.12.114+:netns_immutable"
   echo "NX30PRO_KERNEL_BYTES=$KERNEL_BYTES"
   echo "NX30PRO_ROOTFS_BYTES=$ROOTFS_BYTES"
   echo "NX30PRO_KERNEL_PLUS_ROOTFS_BYTES=$PAYLOAD_BYTES"
   echo "NX30PRO_MAX_SAFE_PAYLOAD_BYTES=$MAX_PAYLOAD_BYTES"
-  cat "$ROOT_DIR/work/CORE-INFO.txt"
 } > "$OUT/BUILD-INFO.txt"
 
 find "$OUT" -maxdepth 1 -type f \( -name '*.bin' -o -name '*.itb' -o -name '*.img' -o -name '*.tar' \) -print0 |

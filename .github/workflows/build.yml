@@ -1,4 +1,4 @@
-name: Build H3C NX30 Pro LEDE
+name: Build Campus SY - H3C NX30 Pro
 
 on:
   push:
@@ -9,14 +9,10 @@ on:
       - 'configs/**'
       - 'scripts/**'
       - 'files/**'
+      - 'assets/**'
       - '.github/workflows/build.yml'
   workflow_dispatch:
     inputs:
-      include_mihomo_core:
-        description: 'Preinstall a SHA-256 verified Linux ARM64 Mihomo core (does not fix runtime OOM)'
-        required: true
-        type: boolean
-        default: false
       lede_ref:
         description: 'coolsnowwolf/lede branch or tag'
         required: true
@@ -47,12 +43,12 @@ jobs:
     env:
       LEDE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.lede_ref || 'master' }}
       UA3F_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ua3f_ref || 'v3.7.0' }}
-      OPENCLASH_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.openclash_ref || 'master' }}
       ARGON_REF: v3.1.0
-      # Keep Mihomo outside the flash image by default; install it later only if needed.
-      INCLUDE_MIHOMO_CORE: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mihomo_core && 'true' || 'false' }}
+      ESURFING_REF: v2.2.1-r7
+      UU_REF: v2.2.2
+      ZIG_VERSION: '0.13.0'
     steps:
-      - name: Checkout dedicated NX30 Pro build configuration
+      - name: Checkout Campus SY build configuration
         uses: actions/checkout@v4
 
       - name: Free disk space and install build dependencies
@@ -68,23 +64,31 @@ jobs:
             libxml-parser-perl libusb-1.0-0-dev
           df -h
 
+      - name: Install Zig for UU architecture shims
+        run: |
+          set -euxo pipefail
+          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" -o /tmp/zig.tar.xz
+          mkdir -p "$HOME/zig"
+          tar -xf /tmp/zig.tar.xz -C "$HOME/zig" --strip-components=1
+          echo "$HOME/zig" >> "$GITHUB_PATH"
+          "$HOME/zig/zig" version
+
       - name: Print selected build configuration
         run: |
           echo "LEDE_REF=$LEDE_REF"
           echo "UA3F_REF=$UA3F_REF"
-          echo "OPENCLASH_REF=$OPENCLASH_REF"
-          echo "ARGON_REF=$ARGON_REF"
-          echo "INCLUDE_MIHOMO_CORE=$INCLUDE_MIHOMO_CORE"
+          echo "ESURFING_REF=$ESURFING_REF"
+          echo "UU_REF=$UU_REF"
           df -h
 
-      - name: Build NX30 Pro firmware
+      - name: Build Campus SY firmware
         run: bash ./scripts/build.sh
 
       - name: Upload firmware and verification metadata
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: NX30Pro-LEDE-UA3F-OpenClash
+          name: CampusSY-NX30Pro-LEDE
           path: |
             work/openwrt/bin/targets/mediatek/filogic/openwrt-mediatek-filogic-h3c_magic-nx30-pro-squashfs-sysupgrade.bin
             work/openwrt/bin/targets/mediatek/filogic/openwrt-mediatek-filogic-h3c_magic-nx30-pro-initramfs-kernel.bin
@@ -103,10 +107,9 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: NX30Pro-build-diagnostics
+          name: CampusSY-build-diagnostics
           path: |
             work/openwrt/.config
             work/openwrt/logs/**
-            work/mihomo-release.json
           if-no-files-found: ignore
           retention-days: 7

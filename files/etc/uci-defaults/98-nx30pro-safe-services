@@ -1,30 +1,64 @@
 #!/bin/sh
-# First-boot defaults only: do not intercept router traffic before manual validation.
+# Campus SY first-boot defaults. Authentication services stay stopped until configured.
 if [ -f /etc/config/ua3f ]; then
     uci -q set ua3f.enabled.enabled='0'
     uci -q set ua3f.main.server_mode='TPROXY'
     uci -q set ua3f.main.port='1080'
     uci -q set ua3f.main.ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.97 Safari/537.36 Core/1.116.569.400 QQBrowser/19.7.6765.400'
-    # Leave optional BPF TC offload disabled until the actual uplink interface is confirmed.
     uci -q set ua3f.main.l3_rewrite_bpf_offload='0'
     uci -q commit ua3f
 fi
 
-if [ -f /etc/config/openclash ]; then
-    uci -q set openclash.config.enable='0'
-    uci -q commit openclash
+uci -q set system.@system[0].hostname='Campus-SY'
+uci -q commit system
+uci -q set network.lan.proto='static'
+uci -q set network.lan.ipaddr='192.168.5.1'
+uci -q set network.lan.netmask='255.255.255.0'
+uci -q commit network
+
+uci -q set dhcp.lan.interface='lan'
+uci -q set dhcp.lan.start='100'
+uci -q set dhcp.lan.limit='150'
+uci -q set dhcp.lan.leasetime='12h'
+uci -q set dhcp.@dnsmasq[0].rebind_protection='0'
+uci -q commit dhcp
+
+# Set the requested SSIDs only on AP interfaces; never overwrite STA uplink credentials.
+for radio in $(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^=]*\)=wifi-device$/\1/p'); do
+    band="$(uci -q get "wireless.$radio.band" 2>/dev/null)"
+    hwmode="$(uci -q get "wireless.$radio.hwmode" 2>/dev/null)"
+    case "$band:$hwmode" in
+        2g:*|2.4g:*|*:11g|*:11b|*:11bg) ssid='SHAYU' ;;
+        5g:*|*:11a|*:11ac|*:11axa) ssid='SHAYU-5G' ;;
+        *) continue ;;
+    esac
+    for iface in $(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^=]*\)=wifi-iface$/\1/p'); do
+        [ "$(uci -q get "wireless.$iface.device" 2>/dev/null)" = "$radio" ] || continue
+        [ "$(uci -q get "wireless.$iface.mode" 2>/dev/null)" = 'ap' ] || continue
+        uci -q set "wireless.$iface.ssid=$ssid"
+        uci -q set "wireless.$iface.encryption=psk2"
+        uci -q set "wireless.$iface.key=password"
+    done
+done
+uci -q commit wireless
+
+# This shared password is only an initial deployment value. Change it after first login.
+if command -v chpasswd >/dev/null 2>&1; then
+    printf 'root:password\n' | chpasswd
+else
+    printf 'password\npassword\n' | passwd root
 fi
 
-# Argon is included in the image; set it as the first-boot default theme.
 if [ -f /etc/config/luci ]; then
     uci -q set luci.main.mediaurlbase='/luci-static/argon'
     uci -q set luci.main.lang='zh_cn'
     uci -q commit luci
 fi
+printf '校园网 SY\n' > /etc/banner
 
-# Enable STA-link recovery; the guard only acts on radios with a configured STA interface.
-if [ -x /etc/init.d/wifi-bridge-guard ]; then
-    /etc/init.d/wifi-bridge-guard enable
-fi
-
+# Clients are installed but disabled until each school's credentials are entered.
+for service in mentohust dogcom esurfingclient uuplugin; do
+    [ -x "/etc/init.d/$service" ] && "/etc/init.d/$service" disable >/dev/null 2>&1
+done
+[ -x /etc/init.d/wifi-bridge-guard ] && /etc/init.d/wifi-bridge-guard enable
 exit 0

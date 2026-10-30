@@ -1,45 +1,50 @@
-# H3C Magic NX30 Pro — LEDE/OpenWrt 独立构建
+# 校园网 SY —— 多机型统一校园网专用固件
 
-本仓库仅面向 H3C Magic NX30 Pro（MT7981 / MediaTek Filogic），不复用 AX3000T、CR660X 等其他机型的 target 或镜像布局。
+采用“统一公共功能 + 独立设备 profile”的方式。当前已实现的 profile 是 **H3C Magic NX30 Pro（MT7981 / Filogic）**。其他机型必须新增自己的 target、无线驱动和分区配置，不能把 NX30 Pro 镜像刷到其他设备。
 
-## 本次固件功能
+## 精简功能白名单
 
-- 源码：`https://github.com/coolsnowwolf/lede`，默认分支 `master`
-- 设备 profile：`h3c_magic-nx30-pro`
-- UA3F：使用 TPROXY，保留指定的完整 QQBrowser UA；默认关闭可能因无合适 TC 上行接口而启动失败的 BPF TC offload
-- UA3F 依赖：`kmod-nft-queue`、`kmod-nft-tproxy`、`kmod-sched-bpf`、`libubox-lua`，并校验相关 netfilter 依赖在 Kconfig 后仍存在
-- 无线驱动构建兼容：针对 Linux 6.12.114+ 的 `netns_local` → `netns_immutable` 字段变化，更新 mac80211 backport 条件，修复此前 `struct net_device has no member named netns_local` 编译错误
-- PassWall：从 Openwrt-Passwall 官方维护的 luci 与 packages feeds 构建，使用 nftables 透明代理；显式禁用独立 SSR-Plus 页面、ShadowsocksR-libev、Shadowsocks Rust、Simple-Obfs 和 V2ray-plugin 可选组件；保留 Xray 与 sing-box 两个常用核心以控制镜像体积
-- 主题：加入 Jerrykuku 的 Argon 稳定版 v3.1.0，默认深色/浅色可切换并设置为默认主题，附带 Argon 配置页与 LuCI 简体中文基础语言包；主题包官方介绍包括响应式布局和亮暗模式切换
-- MentoHUST：集成锐捷客户端守护进程 `mentohust` 和 `luci-app-mentohust` 管理页面；校园网账号、密码、网卡和认证参数需在刷机后自行填写
-- Wi-Fi 中继恢复：附带 `wifi-bridge-guard`，每 60 秒检查已配置的 STA 上行，连续 3 次未连接后尝试恢复对应 radio；每个 radio 至多每 10 分钟恢复一次
-- 无线中继协议：加入 `relayd` 与 `luci-proto-relay`，用于需要 relayd 的非 WDS 中继组网
-- 保留 OpenClash 管理界面，但默认不把 Mihomo 核心塞进固件；如确实需要 OpenClash，可在刷机后通过管理界面下载对应核心。这样可显著缩小镜像，避免超过 NX30 Pro 64 MiB UBI 分区容量
+- **UA3F**：TPROXY；保留 `kmod-nft-queue`、`kmod-nft-tproxy`、`kmod-sched-bpf`、`libubox-lua` 及必要 netfilter 依赖。BPF TC offload 默认关闭，避免此前无合适 TC 上行接口导致启动失败。
+- **MentoHUST**：锐捷认证核心 + LuCI 管理。
+- **Dogcom**：Dr.COM 认证核心 + LuCI 管理。
+- **ESurfingClient C v2.2.1-r7**：天翼客户端 + LuCI 管理。上游说明主要针对广东校园网，其他地区流程不同，需要实测。
+- **WPA-EAP**：完整 `wpad-openssl` supplicant/authenticator；不安装 MiniEAP。
+- **UU 游戏加速器**：集成 `xiaodoudou/luci-app-uugamebooster` v2.2.2 和五种架构 view-filter shim。加速主程序由插件首次启用时从官方端下载并校验；此版本含 UA3F 协同规则。
+- **PassWall**：nftables 模式，保留 Xray / sing-box；不加 OpenClash、SSR-Plus 或其他代理前端。
+- **SQM**：使用系统 `sqm-scripts` + `luci-app-sqm`，合并你上传的 `sqm.zh-cn.lmo` 和各队列 help 文件。
+- **5 GHz 桥接**：`iw`、`relayd`、`luci-proto-relay` + STA 掉线恢复服务。
+- **主题**：Argon 中文界面。
 
-## 管理界面主题
+未列出的插件不加入；删除 OpenClash、Mihomo、Turbo ACC、SSR-Plus、MiniEAP、Docker、下载器、广告过滤等无关组件。
 
-首次启动默认进入 Argon 主题。可在系统菜单的 Argon 配置中切换深浅色模式与强调色；主题只改变管理界面的显示方式，不会改变无线协商速率或桥接链路。
+## 默认设置
 
-## 无线 5 GHz 说明
+| 项目 | 默认值 |
+|---|---|
+| 系统显示名称 | 校园网 SY |
+| 主机名 | `Campus-SY` |
+| LAN | `192.168.5.1/24` |
+| DHCP 池 | `192.168.5.100–192.168.5.249` |
+| 2.4 GHz SSID | `SHAYU` |
+| 5 GHz SSID | `SHAYU-5G` |
+| Wi-Fi 初始密码 | `password` |
+| root 初始密码 | `password` |
+| DHCP rebind protection | 关闭 |
+| 加速 / QoS | 删除 Turbo ACC；保留 SQM |
 
-自动恢复能处理部分 STA 接口掉线或无线接口未重新关联的情况，但不能保证修复上游 AP 关闭 5 GHz、SSID/密码改变、信号过弱、国家码不一致或 DFS 雷达检测导致的换信道。为了稳定测试，优先把上游 5 GHz 设为当地法规允许的非 DFS 信道（例如常见的 36–48 区间，具体取决于国家/地区及 AP），并确保桥接 STA 和本机 AP 的信道跟随关系没有被手动固定配置破坏。
+**安全提示：** 统一的 `password` 只适合作为初始测试密码。正式使用后应立即更改 root 和 Wi-Fi 密码，并限制管理后台只允许从 LAN 访问。
 
-默认看门狗会在无线桥接 STA 长时间掉线后重新拉起对应 radio，过程中该 radio 的无线客户端可能短暂断开。可用以下命令关闭：
+## 5 GHz 桥接策略
 
-```sh
-uci set wifi-bridge-guard.main.enabled='0'
-uci commit wifi-bridge-guard
-/etc/init.d/wifi-bridge-guard restart
-```
+不将 `AX / 157 / 80 MHz` 写死为所有设备默认。不同无线芯片、驱动、国家码和上游 AP 的支持范围不同；同一 radio 同时做 STA 上行和 AP 时，下游 AP 要跟随上游信道。强制 157/80 可能导致某些设备 5 GHz 无法启动或 STA 关联失败。
 
-## 代理栈使用注意
+桥接优先使用两端都支持的 WDS，不支持时使用 relayd。看门狗会检查 STA 连接状态，连续掉线后限频恢复；它不能解决错误密码、上游关闭 5 GHz、弱信号或 DFS 事件本身。AX、157、80 MHz 应在具体机型支持后单独测试。
 
-PassWall 和 OpenClash 同时装入镜像，但不要在未验证规则的情况下同时启用它们并让同一 LAN 流量经过两套透明代理。UA3F 默认使用 TPROXY 配置，但服务本身首次启动仍保持禁用。逐项测试 DNS、IPv4/IPv6、旁路由/中继以及认证流量后再启用所需服务。
+## 通用编译结构
 
-## 自动构建
+- `configs/packages.common.config`：共用功能包白名单。
+- `configs/devices/h3c_magic-nx30-pro.config`：NX30 Pro 专属 target。
+- 新设备新增独立 profile、分区容量和驱动配置。
+- 当前自动构建只实现 NX30 Pro；其他机型尚未加入，不承诺一份镜像刷全部路由器。
 
-向 `main` 提交 `configs/**`、`scripts/**`、`files/**` 等文件会触发 GitHub Actions。构建成功后会上传 `NX30Pro-LEDE-UA3F-OpenClash` artifact，包括设备镜像、`build.config`、`BUILD-INFO.txt` 与 `SHA256SUMS`。
-
-构建日志会记录 LEDE、UA3F、OpenClash、PassWall 两个 feed、MentoHUST 与 Argon 主题的 commit。构建脚本会检查 sysupgrade 包内的 kernel + rootfs 总大小，超过 60 MiB 会直接失败，避免发布超出 64 MiB UBI 分区安全余量的镜像。为给该限制留出足够余量，默认不打包 Mihomo 核心以及 PassWall 的 Shadowsocks Rust、Simple-Obfs 和 V2ray-plugin 可选组件；Xray 与 sing-box 仍保留。构建成功仍只表示编译器生成了镜像，**不等于已在 NX30 Pro 实机验证可刷或可运行**。刷机前必须检查 `BUILD-INFO.txt`、校验 `SHA256SUMS`，并确认所选文件是适用的 sysupgrade 镜像；不要覆盖 U-Boot、BL2 或 FIP 分区。
-
-详见 [docs/FLASHING.md](docs/FLASHING.md)。
+构建会检查所需软件包经 `make defconfig` 后是否仍被选中，并要求 NX30 Pro sysupgrade 内的 kernel + rootfs 不超过 60 MiB，为 64 MiB UBI 留出余量。编译成功不等于认证已在每个学校实测。MentoHUST、Dogcom、ESurfingClient 的账号和认证字段需要按学校实际环境配置。
