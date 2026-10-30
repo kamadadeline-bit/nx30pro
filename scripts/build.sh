@@ -147,6 +147,14 @@ test -s "$UU_SRC_DIR/luci-app-uugamebooster/root/usr/lib/uuplugin/uu-view-preloa
 rm -rf package/luci-app-uugamebooster
 cp -a "$UU_SRC_DIR/luci-app-uugamebooster" package/luci-app-uugamebooster
 
+# The LEDE Kconfig symbol is libstdcpp; ABI_VERSION=6 is only the runtime
+# package ABI suffix and is not the source package name used by LUCI_DEPENDS.
+sed -i 's/+libstdcpp6/+libstdcpp/g' package/luci-app-uugamebooster/Makefile
+grep -q 'LUCI_DEPENDS:=.*+libstdcpp' package/luci-app-uugamebooster/Makefile || {
+  echo 'ERROR: UU Game Booster libstdc++ dependency normalization failed.' >&2
+  exit 1
+}
+
 # UA3F keeps its OpenWrt package Makefile under openwrt/ and Go sources at the repo root.
 # Stage a proper top-level package directory, then fix source paths for OpenWrt's build system.
 UA3F_SRC_DIR="$ROOT_DIR/work/UA3F-src"
@@ -205,7 +213,7 @@ for package in \
   luci-proto-relay relayd iw kmod-nft-socket kmod-nft-nat \
   luci-theme-argon luci-app-argon-config \
   luci-app-sqm sqm-scripts tc-tiny kmod-ifb kmod-sched-cake \
-  kmod-nf-reject kmod-nf-reject6 kmod-tun kmod-ipt-nat unshare libstdcpp6; do
+  kmod-nf-reject kmod-nf-reject6 kmod-tun kmod-ipt-nat unshare libstdcpp; do
   if ! grep -qx "CONFIG_PACKAGE_${package}=y" .config; then
     echo "ERROR: required package ${package} is missing or was dropped by Kconfig." >&2
     exit 1
