@@ -99,15 +99,17 @@ target_mk = Path(sys.argv[1])
 luci_admin_mk = Path(sys.argv[2])
 
 text = target_mk.read_text(encoding="utf-8")
-start_token = "DEFAULT_PACKAGES.router:=\\\n"
+start_token = "DEFAULT_PACKAGES.router:=" + chr(92) + "\n"
 end_token = "\n\nifneq ($(DUMP),)"
 if text.count(start_token) != 1:
     raise SystemExit("ERROR: could not uniquely locate DEFAULT_PACKAGES.router in include/target.mk")
 start = text.index(start_token)
 end = text.index(end_token, start)
-minimal = """DEFAULT_PACKAGES.router:=\\
-\tdnsmasq-full firewall4 nftables-json iptables ppp ppp-mod-pppoe \\
-\todhcp6c odhcpd-ipv6only ip6tables libip6tc kmod-ipt-nat6"""
+minimal = "\n".join([
+    "DEFAULT_PACKAGES.router:=" + chr(92),
+    "\tdnsmasq-full firewall4 nftables-json iptables ppp ppp-mod-pppoe " + chr(92),
+    "\todhcp6c odhcpd-ipv6only ip6tables libip6tc kmod-ipt-nat6",
+])
 text = text[:start] + minimal + text[end:]
 target_mk.write_text(text, encoding="utf-8")
 if "luci-app-ssr-plus" in text or "luci-app-ddns" in text:
