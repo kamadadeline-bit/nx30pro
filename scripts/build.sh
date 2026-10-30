@@ -192,7 +192,7 @@ rm -rf package/esurfingclient package/luci-app-esurfingclient
 cp -a "$ESURFING_SRC_DIR/esurfingclient" package/esurfingclient
 cp -a "$ESURFING_SRC_DIR/luci-app-esurfingclient" package/luci-app-esurfingclient
 
-# ESurfingClient's static link needs curl's staging headers and libcurl.a.
+# ESurfingClient needs curl's staging headers and the libcurl package.
 # PKG_BUILD_DEPENDS names the source package (PKG_NAME=curl), not the binary
 # library subpackage (libcurl).
 sed -i 's/^PKG_BUILD_DEPENDS:=libcurl$/PKG_BUILD_DEPENDS:=curl/' package/esurfingclient/Makefile
@@ -228,7 +228,7 @@ mk = mk.replace("-DCURL_STATICLIB -pthread", "-pthread")
 title = "\tTITLE:=ESurfingClient\n"
 if mk.count(title) != 1:
     raise SystemExit("ERROR: ESurfingClient package title anchor was not found exactly once.")
-mk = mk.replace(title, title + "\tDEPENDS:=+libcurl\n")
+mk = mk.replace(title, title + "\tDEPENDS:=+libcurl +libatomic\n")
 
 old = """    set(BUILD_SHARED_LIBS OFF)
     set(CURL_USE_STATIC_LIBS TRUE)
@@ -271,8 +271,8 @@ if "-static -lpthread -latomic" in mk:
     raise SystemExit("ERROR: ESurfingClient still forces a static executable link.")
 if "-DCURL_STATICLIB" in mk:
     raise SystemExit("ERROR: ESurfingClient still defines CURL_STATICLIB for shared libcurl.")
-if "DEPENDS:=+libcurl" not in mk:
-    raise SystemExit("ERROR: ESurfingClient runtime libcurl dependency is missing.")
+if "DEPENDS:=+libcurl +libatomic" not in mk:
+    raise SystemExit("ERROR: ESurfingClient runtime libcurl/libatomic dependencies are missing.")
 if "if (__OPENWRT__)\n        # Prefer OpenWrt's shared libcurl" not in cm:
     raise SystemExit("ERROR: OpenWrt shared-libcurl selection patch did not apply.")
 print("Patched ESurfingClient to use shared libcurl with explicit runtime dependency.")
@@ -367,7 +367,7 @@ for package in \
   kmod-nft-core kmod-nfnetlink-queue kmod-nf-tproxy kmod-nf-conntrack \
   kmod-nf-conntrack-netlink kmod-sched-core dnsmasq-full \
   luci-app-passwall ipt2socks mentohust luci-app-mentohust libpcap \
-  dogcom luci-app-dogcom esurfingclient luci-app-esurfingclient libcurl \
+  dogcom luci-app-dogcom esurfingclient luci-app-esurfingclient libcurl libatomic \
   luci-app-uugamebooster wpad-openssl \
   luci-proto-relay relayd iw kmod-nft-socket kmod-nft-nat \
   luci-base luci-mod-admin-full luci-mod-network luci-mod-status luci-mod-system \
