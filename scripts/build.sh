@@ -229,7 +229,25 @@ for ppp_package in ppp ppp-mod-pppoe kmod-ppp kmod-pppoe; do
 done
 
 # Reject unrequested proxy frontends and unrelated acceleration apps.
-for forbidden in luci-app-openclash luci-app-ssr-plus luci-app-turboacc luci-app-minieap; do
+for forbidden in \
+  luci-app-openclash luci-app-ssr-plus luci-app-turboacc luci-app-minieap \
+  luci-app-arpbind luci-app-autoreboot luci-app-ddns luci-app-filetransfer \
+  luci-app-nlbwmon luci-app-oui luci-app-package-manager luci-app-rclone \
+  luci-app-upnp luci-app-vlmcsd luci-app-vsftpd luci-app-wol \
+  luci-theme-bootstrap; do
+  if grep -qx "CONFIG_PACKAGE_${forbidden}=y" .config; then
+    echo "ERROR: unrequested package ${forbidden} was selected." >&2
+    exit 1
+  fi
+done
+
+# Confirm no unrequested translations or helper daemons leaked from the seed config.
+for forbidden in \
+  luci-i18n-arpbind-zh-cn luci-i18n-autoreboot-zh-cn luci-i18n-ddns-zh-cn \
+  luci-i18n-filetransfer-zh-cn luci-i18n-nlbwmon-zh-cn \
+  luci-i18n-package-manager-zh-cn luci-i18n-ssr-plus-zh-cn \
+  luci-i18n-upnp-zh-cn luci-i18n-vlmcsd-zh-cn luci-i18n-vsftpd-zh-cn \
+  luci-i18n-wol-zh-cn 3proxy dns2tcp nping ipt2socks vsftpd vlmcsd etherwake coremark htop default-settings; do
   if grep -qx "CONFIG_PACKAGE_${forbidden}=y" .config; then
     echo "ERROR: unrequested package ${forbidden} was selected." >&2
     exit 1
