@@ -203,6 +203,22 @@ for package in \
   fi
 done
 
+# Assert the four PPP / PPPoE runtime layers used by FlashNet.
+for ppp_package in ppp ppp-mod-pppoe kmod-ppp kmod-pppoe; do
+  if ! grep -qx "CONFIG_PACKAGE_${ppp_package}=y" .config; then
+    echo "ERROR: required FlashNet PPP package ${ppp_package} is missing." >&2
+    exit 1
+  fi
+done
+
+# Reject unrequested proxy frontends and unrelated acceleration apps.
+for forbidden in luci-app-openclash luci-app-ssr-plus luci-app-turboacc luci-app-minieap; do
+  if grep -qx "CONFIG_PACKAGE_${forbidden}=y" .config; then
+    echo "ERROR: unrequested package ${forbidden} was selected." >&2
+    exit 1
+  fi
+done
+
 # Confirm the standalone SSR-Plus app and PassWall's optional SSR-libev engines stay disabled.
 if grep -qx 'CONFIG_PACKAGE_luci-app-ssr-plus=y' .config; then
   echo 'ERROR: standalone luci-app-ssr-plus must not be enabled; use PassWall.' >&2
@@ -264,7 +280,7 @@ echo "NX30PRO_KERNEL_PLUS_ROOTFS_BYTES=$PAYLOAD_BYTES"
 echo "NX30PRO_MAX_SAFE_PAYLOAD_BYTES=$MAX_PAYLOAD_BYTES"
 if (( PAYLOAD_BYTES > MAX_PAYLOAD_BYTES )); then
   echo "ERROR: NX30 Pro kernel + rootfs payload ($PAYLOAD_BYTES bytes) exceeds conservative 60 MiB limit for its 64 MiB UBI partition." >&2
-  echo "Do not flash this image. Reduce optional packages or disable embedded Mihomo core." >&2
+  echo "Do not flash this image. Reduce the selected package set and rebuild." >&2
   exit 1
 fi
 

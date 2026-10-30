@@ -23,11 +23,6 @@ on:
         required: true
         type: string
         default: v3.7.0
-      openclash_ref:
-        description: 'OpenClash branch or tag'
-        required: true
-        type: string
-        default: master
 
 permissions:
   contents: read

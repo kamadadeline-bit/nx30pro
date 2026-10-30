@@ -8,6 +8,7 @@
 - **MentoHUST**：锐捷认证核心 + LuCI 管理。
 - **Dogcom**：Dr.COM 认证核心 + LuCI 管理。
 - **ESurfingClient C v2.2.1-r7**：天翼客户端 + LuCI 管理。上游说明主要针对广东校园网，其他地区流程不同，需要实测。
+- **闪讯拨号环境**：明确包含 `ppp`、`ppp-mod-pppoe`、`kmod-ppp`、`kmod-pppoe` 四个 PPP/PPPoE 基础包；闪讯客户端自身仍需匹配实际学校的认证方式和拨号参数。
 - **WPA-EAP**：完整 `wpad-openssl` supplicant/authenticator；不安装 MiniEAP。
 - **UU 游戏加速器**：集成 `xiaodoudou/luci-app-uugamebooster` v2.2.2 和五种架构 view-filter shim。加速主程序由插件首次启用时从官方端下载并校验；此版本含 UA3F 协同规则。
 - **PassWall**：nftables 模式，保留 Xray / sing-box；不加 OpenClash、SSR-Plus 或其他代理前端。

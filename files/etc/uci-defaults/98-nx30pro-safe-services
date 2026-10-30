@@ -28,7 +28,7 @@ for radio in $(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^=]*\)
     band="$(uci -q get "wireless.$radio.band" 2>/dev/null)"
     hwmode="$(uci -q get "wireless.$radio.hwmode" 2>/dev/null)"
     case "$band:$hwmode" in
-        2g:*|2.4g:*|*:11g|*:11b|*:11bg) ssid='SHAYU' ;;
+        2g:*|2.4g:*|*:11g|*:11b|*:11bg|*:11ng|*:11axg) ssid='SHAYU' ;;
         5g:*|*:11a|*:11ac|*:11axa) ssid='SHAYU-5G' ;;
         *) continue ;;
     esac
