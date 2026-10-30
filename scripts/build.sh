@@ -201,6 +201,61 @@ grep -qx 'PKG_BUILD_DEPENDS:=curl' package/esurfingclient/Makefile || {
   exit 1
 }
 
+# ESurfingClient upstream defaults to a fully static libcurl link on Linux.
+# OpenWrt's libcurl.a has transitive OpenSSL/nghttp2 dependencies that CMake's
+# FindCURL target does not propagate here. Use OpenWrt's shared libcurl instead
+# and declare it as a runtime dependency of the client package.
+python3 - package/esurfingclient/Makefile package/esurfingclient/app/CMakeLists.txt <<'PY'
+from pathlib import Path
+import sys
+
+makefile = Path(sys.argv[1])
+cmake = Path(sys.argv[2])
+mk = makefile.read_text(encoding="utf-8")
+cm = cmake.read_text(encoding="utf-8")
+
+static_link = r'-DCMAKE_EXE_LINKER_FLAGS=\"-static -lpthread -latomic\"'
+shared_link = r'-DCMAKE_EXE_LINKER_FLAGS=\"-lpthread -latomic\"'
+if mk.count(static_link) != 1:
+    raise SystemExit("ERROR: expected ESurfingClient static linker flag was not found exactly once.")
+mk = mk.replace(static_link, shared_link)
+
+title = "\tTITLE:=ESurfingClient\n"
+if mk.count(title) != 1:
+    raise SystemExit("ERROR: ESurfingClient package title anchor was not found exactly once.")
+mk = mk.replace(title, title + "\tDEPENDS:=+libcurl\n")
+
+old = """    set(BUILD_SHARED_LIBS OFF)
+    set(CURL_USE_STATIC_LIBS TRUE)
+
+    set(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
+endif ()"""
+new = """    set(BUILD_SHARED_LIBS OFF)
+    if (__OPENWRT__)
+        # OpenWrt ships libcurl and its transitive dependencies as packages.
+        # Link against libcurl.so; do not force the incomplete static archive.
+        set(CURL_USE_STATIC_LIBS FALSE)
+    else ()
+        set(CURL_USE_STATIC_LIBS TRUE)
+        set(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
+    endif ()
+endif ()"""
+if cm.count(old) != 1:
+    raise SystemExit("ERROR: expected Linux static-CURL CMake block was not found exactly once.")
+cm = cm.replace(old, new)
+
+makefile.write_text(mk, encoding="utf-8")
+cmake.write_text(cm, encoding="utf-8")
+
+if "-static -lpthread -latomic" in mk:
+    raise SystemExit("ERROR: ESurfingClient still forces a static executable link.")
+if "DEPENDS:=+libcurl" not in mk:
+    raise SystemExit("ERROR: ESurfingClient runtime libcurl dependency is missing.")
+if "if (__OPENWRT__)\n        # OpenWrt ships libcurl" not in cm:
+    raise SystemExit("ERROR: OpenWrt shared-libcurl selection patch did not apply.")
+print("Patched ESurfingClient to use shared libcurl with explicit runtime dependency.")
+PY
+
 UU_SRC_DIR="$ROOT_DIR/work/UU-src"
 git clone --depth 1 --branch "$UU_REF" https://github.com/xiaodoudou/luci-app-uugamebooster.git "$UU_SRC_DIR"
 if ! command -v zig >/dev/null 2>&1 && [ ! -x "$HOME/zig/zig" ]; then
