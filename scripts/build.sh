@@ -214,11 +214,16 @@ cmake = Path(sys.argv[2])
 mk = makefile.read_text(encoding="utf-8")
 cm = cmake.read_text(encoding="utf-8")
 
-static_link = r'-DCMAKE_EXE_LINKER_FLAGS=\"-static -lpthread -latomic\"'
-shared_link = r'-DCMAKE_EXE_LINKER_FLAGS=\"-lpthread -latomic\"'
+static_link = '-DCMAKE_EXE_LINKER_FLAGS="-static -lpthread -latomic"'
+shared_link = '-DCMAKE_EXE_LINKER_FLAGS="-lpthread -latomic"'
 if mk.count(static_link) != 1:
     raise SystemExit("ERROR: expected ESurfingClient static linker flag was not found exactly once.")
 mk = mk.replace(static_link, shared_link)
+
+# CURL_STATICLIB is only needed for Windows DLL builds. OpenWrt uses shared libcurl.
+if mk.count("-DCURL_STATICLIB -pthread") != 2:
+    raise SystemExit("ERROR: expected two ESurfingClient CURL_STATICLIB compile flags.")
+mk = mk.replace("-DCURL_STATICLIB -pthread", "-pthread")
 
 title = "\tTITLE:=ESurfingClient\n"
 if mk.count(title) != 1:
@@ -232,9 +237,10 @@ old = """    set(BUILD_SHARED_LIBS OFF)
 endif ()"""
 new = """    set(BUILD_SHARED_LIBS OFF)
     if (__OPENWRT__)
-        # OpenWrt ships libcurl and its transitive dependencies as packages.
-        # Link against libcurl.so; do not force the incomplete static archive.
+        # Prefer OpenWrt's shared libcurl; static libcurl.a has unpropagated
+        # OpenSSL/nghttp2 dependencies in this upstream CMake project.
         set(CURL_USE_STATIC_LIBS FALSE)
+        set(CMAKE_FIND_LIBRARY_SUFFIXES .so .a)
     else ()
         set(CURL_USE_STATIC_LIBS TRUE)
         set(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
@@ -244,11 +250,28 @@ if cm.count(old) != 1:
     raise SystemExit("ERROR: expected Linux static-CURL CMake block was not found exactly once.")
 cm = cm.replace(old, new)
 
+# Refuse to build if FindCURL still resolves the static archive on OpenWrt.
+find_anchor = "find_package(CURL REQUIRED)\\n"
+if cm.count(find_anchor) != 1:
+    raise SystemExit("ERROR: ESurfingClient find_package(CURL) anchor was not found exactly once.")
+find_guard = r'''find_package(CURL REQUIRED)
+
+if (__OPENWRT__)
+    set(_curl_link_candidates "${CURL_LIBRARIES};${CURL_LIBRARY};${CURL_LIBRARY_RELEASE}")
+    if (_curl_link_candidates MATCHES "[.]a($|[;])")
+        message(FATAL_ERROR "OpenWrt ESurfingClient selected static libcurl: ${_curl_link_candidates}")
+    endif ()
+    message(STATUS "OpenWrt ESurfingClient shared libcurl: ${_curl_link_candidates}")
+endif ()'''
+cm = cm.replace("find_package(CURL REQUIRED)", find_guard)
+
 makefile.write_text(mk, encoding="utf-8")
 cmake.write_text(cm, encoding="utf-8")
 
 if "-static -lpthread -latomic" in mk:
     raise SystemExit("ERROR: ESurfingClient still forces a static executable link.")
+if "-DCURL_STATICLIB" in mk:
+    raise SystemExit("ERROR: ESurfingClient still defines CURL_STATICLIB for shared libcurl.")
 if "DEPENDS:=+libcurl" not in mk:
     raise SystemExit("ERROR: ESurfingClient runtime libcurl dependency is missing.")
 if "if (__OPENWRT__)\n        # OpenWrt ships libcurl" not in cm:
