@@ -1,6 +1,6 @@
 # 校园网 SY —— 多机型统一校园网专用固件
 
-采用“统一公共功能 + 独立设备 profile”的方式。当前已实现的 profile 是 **H3C Magic NX30 Pro（MT7981 / Filogic）**。其他机型必须新增自己的 target、无线驱动和分区配置，不能把 NX30 Pro 镜像刷到其他设备。
+采用“统一公共功能 + 独立设备 profile”的方式。当前包含 **H3C Magic NX30 Pro（MT7981 / Filogic）** 和 **Redmi AX6（Qualcomm IPQ8074 / qualcommax-ipq807x）** 两个独立 profile。AX6 正在进行独立构建验证，不能把 NX30 Pro 镜像刷到 AX6，也不能把 AX6 镜像刷到其他设备。
 
 ## 精简功能白名单
 
@@ -46,6 +46,11 @@
 - `configs/packages.common.config`：共用功能包白名单。
 - `configs/devices/h3c_magic-nx30-pro.config`：NX30 Pro 专属 target。
 - 新设备新增独立 profile、分区容量和驱动配置。
-- 当前自动构建只实现 NX30 Pro；其他机型尚未加入，不承诺一份镜像刷全部路由器。
+- NX30 Pro 使用原有构建工作流；Redmi AX6 使用独立的 `build-ax6.yml` 工作流和 `redmi_ax6` profile。其他机型仍需新增独立设备配置，不承诺一份镜像刷全部路由器。
 
 构建会检查所需软件包经 `make defconfig` 后是否仍被选中，并要求 NX30 Pro sysupgrade 内的 kernel + rootfs 不超过 60 MiB，为 64 MiB UBI 留出余量。编译成功不等于认证已在每个学校实测。MentoHUST、Dogcom、ESurfingClient 的账号和认证字段需要按学校实际环境配置。
+
+
+## Redmi AX6
+
+AX6 独立配置与 UBI 镜像校验说明见 [README-AX6.md](README-AX6.md)。AX6 原生 U-Boot 镜像以 `factory.ubi` 输出；工作流额外生成字节完全一致的 `redmi_ax6-campus-factory.bin` 便于按你的文件命名习惯识别，不进行格式转换。
