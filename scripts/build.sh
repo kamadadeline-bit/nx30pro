@@ -473,7 +473,7 @@ fi
 
 # Install defaults, STA recovery helper, and user-supplied SQM Chinese resources.
 mkdir -p files/etc/uci-defaults files/etc/init.d files/etc/config files/usr/sbin
-cp "$ROOT_DIR/files/etc/uci-defaults/98-nx30pro-safe-services" files/etc/uci-defaults/
+cp "$ROOT_DIR/files/etc/uci-defaults/98-campus-sy-safe-services" files/etc/uci-defaults/
 cp "$ROOT_DIR/files/etc/init.d/wifi-bridge-guard" files/etc/init.d/
 cp "$ROOT_DIR/files/etc/config/wifi-bridge-guard" files/etc/config/
 cp "$ROOT_DIR/files/usr/sbin/wifi-bridge-guard" files/usr/sbin/
@@ -481,7 +481,7 @@ tar -xzf "$ROOT_DIR/assets/sqm-i18n-data.tar.gz" -C files/
 test -s files/usr/lib/lua/luci/i18n/sqm.zh-cn.lmo || {
   echo 'ERROR: SQM Chinese translation missing from rootfs overlay.' >&2; exit 1;
 }
-chmod 0755 files/etc/uci-defaults/98-nx30pro-safe-services
+chmod 0755 files/etc/uci-defaults/98-campus-sy-safe-services
 chmod 0755 files/etc/init.d/wifi-bridge-guard files/usr/sbin/wifi-bridge-guard
 
 echo 'Disk before downloads:'
@@ -588,6 +588,7 @@ fi
 find "$OUT" -maxdepth 1 -type f \( -name '*.bin' -o -name '*.ubi' -o -name '*.itb' -o -name '*.img' -o -name '*.tar' \) -print0 |
   xargs -0 -r sha256sum > "$OUT/SHA256SUMS"
 test -s "$OUT/SHA256SUMS" || { echo 'ERROR: no firmware image files found for checksumming.' >&2; exit 1; }
+(cd "$OUT" && sha256sum -c SHA256SUMS)
 
 echo 'NX30 Pro build artifacts:'
 find "$OUT" -maxdepth 1 -type f -printf '%f\n' | sort
