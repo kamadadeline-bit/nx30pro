@@ -28,16 +28,30 @@ case "$DEVICE_PROFILE" in
     TARGET_PROFILE_LINE='CONFIG_TARGET_mediatek_filogic_DEVICE_h3c_magic-nx30-pro=y'
     SYSUPGRADE_GLOB='*h3c*nx30*pro*sysupgrade.bin'
     ;;
+  redmi_ax6)
+    TARGET_SUBDIR="qualcommax/ipq807x"
+    TARGET_PROFILE_LINE='CONFIG_TARGET_qualcommax_ipq807x_DEVICE_redmi_ax6=y'
+    SYSUPGRADE_GLOB='*redmi_ax6*squashfs-sysupgrade.bin'
+    FACTORY_GLOB='*redmi_ax6*squashfs-factory.ubi'
+    ;;
   *)
     echo "ERROR: unknown/unimplemented DEVICE_PROFILE=$DEVICE_PROFILE" >&2
     exit 1
     ;;
 esac
 test -f "$DEVICE_CONFIG" || { echo "ERROR: device config missing: $DEVICE_CONFIG" >&2; exit 1; }
-grep -q 'TARGET_DEVICES += h3c_magic-nx30-pro' target/linux/mediatek/image/filogic.mk || {
-  echo 'ERROR: selected LEDE ref has no h3c_magic-nx30-pro device profile.' >&2
-  exit 1
-}
+case "$DEVICE_PROFILE" in
+  h3c_magic-nx30-pro)
+    grep -q 'TARGET_DEVICES += h3c_magic-nx30-pro' target/linux/mediatek/image/filogic.mk || {
+      echo 'ERROR: selected LEDE ref has no h3c_magic-nx30-pro device profile.' >&2; exit 1;
+    }
+    ;;
+  redmi_ax6)
+    grep -q 'TARGET_DEVICES += redmi_ax6' target/linux/qualcommax/image/ipq807x.mk || {
+      echo 'ERROR: selected LEDE ref has no redmi_ax6 device profile.' >&2; exit 1;
+    }
+    ;;
+esac
 
 # Linux 6.12.114's refreshed patch stack uses netns_immutable, while the
 # mac80211 backport compatibility patch still selects netns_local until 6.15.
@@ -487,22 +501,28 @@ if [[ -z "$SYSUPGRADE_IMAGE" ]]; then
   exit 1
 fi
 
-# NX30 Pro has a 64 MiB UBI partition and IMAGE_SIZE=65536k.
-# Check the actual kernel + SquashFS payload stored in the sysupgrade tar.
-# Keep a 4 MiB safety margin; never publish an image that is too large for UBI.
-TAR_PREFIX="sysupgrade-h3c_magic-nx30-pro"
-KERNEL_BYTES="$(tar -xOf "$SYSUPGRADE_IMAGE" "$TAR_PREFIX/kernel" | wc -c | tr -d ' ')"
-ROOTFS_BYTES="$(tar -xOf "$SYSUPGRADE_IMAGE" "$TAR_PREFIX/root" | wc -c | tr -d ' ')"
+# Inspect the sysupgrade archive without assuming a device-specific tar prefix.
+KERNEL_MEMBER="$(tar -tf "$SYSUPGRADE_IMAGE" | awk '/(^|\/)kernel$/ {print; exit}')"
+ROOTFS_MEMBER="$(tar -tf "$SYSUPGRADE_IMAGE" | awk '/(^|\/)root$/ {print; exit}')"
+[[ -n "$KERNEL_MEMBER" && -n "$ROOTFS_MEMBER" ]] || {
+  echo "ERROR: sysupgrade archive is missing kernel/root members." >&2; exit 1;
+}
+KERNEL_BYTES="$(tar -xOf "$SYSUPGRADE_IMAGE" "$KERNEL_MEMBER" | wc -c | tr -d ' ')"
+ROOTFS_BYTES="$(tar -xOf "$SYSUPGRADE_IMAGE" "$ROOTFS_MEMBER" | wc -c | tr -d ' ')"
 PAYLOAD_BYTES=$((KERNEL_BYTES + ROOTFS_BYTES))
-MAX_PAYLOAD_BYTES=$((60 * 1024 * 1024))
-echo "NX30PRO_KERNEL_BYTES=$KERNEL_BYTES"
-echo "NX30PRO_ROOTFS_BYTES=$ROOTFS_BYTES"
-echo "NX30PRO_KERNEL_PLUS_ROOTFS_BYTES=$PAYLOAD_BYTES"
-echo "NX30PRO_MAX_SAFE_PAYLOAD_BYTES=$MAX_PAYLOAD_BYTES"
-if (( PAYLOAD_BYTES > MAX_PAYLOAD_BYTES )); then
-  echo "ERROR: NX30 Pro kernel + rootfs payload ($PAYLOAD_BYTES bytes) exceeds conservative 60 MiB limit for its 64 MiB UBI partition." >&2
-  echo "Do not flash this image. Reduce the selected package set and rebuild." >&2
-  exit 1
+echo "DEVICE_PROFILE=$DEVICE_PROFILE"
+echo "KERNEL_BYTES=$KERNEL_BYTES"
+echo "ROOTFS_BYTES=$ROOTFS_BYTES"
+echo "KERNEL_PLUS_ROOTFS_BYTES=$PAYLOAD_BYTES"
+
+if [[ "$DEVICE_PROFILE" == "h3c_magic-nx30-pro" ]]; then
+  # NX30 Pro has a 64 MiB UBI partition; retain the proven 4 MiB safety margin.
+  MAX_PAYLOAD_BYTES=$((60 * 1024 * 1024))
+  echo "MAX_SAFE_PAYLOAD_BYTES=$MAX_PAYLOAD_BYTES"
+  if (( PAYLOAD_BYTES > MAX_PAYLOAD_BYTES )); then
+    echo "ERROR: NX30 Pro kernel + rootfs exceeds the conservative 60 MiB limit." >&2
+    exit 1
+  fi
 fi
 
 cp .config "$OUT/build.config"
@@ -528,13 +548,44 @@ cp .config "$OUT/build.config"
   echo "ARGON_COMMIT=$(git -C "$ARGON_SRC_DIR" rev-parse HEAD)"
   echo "SQM_I18N_SOURCE=uploaded luci-i18n-sqm 1.1.3-1 (Architecture all)"
   echo "MAC80211_NETNS_COMPAT=6.12.114+:netns_immutable"
-  echo "NX30PRO_KERNEL_BYTES=$KERNEL_BYTES"
-  echo "NX30PRO_ROOTFS_BYTES=$ROOTFS_BYTES"
-  echo "NX30PRO_KERNEL_PLUS_ROOTFS_BYTES=$PAYLOAD_BYTES"
-  echo "NX30PRO_MAX_SAFE_PAYLOAD_BYTES=$MAX_PAYLOAD_BYTES"
+  echo "KERNEL_BYTES=$KERNEL_BYTES"
+  echo "ROOTFS_BYTES=$ROOTFS_BYTES"
+  echo "KERNEL_PLUS_ROOTFS_BYTES=$PAYLOAD_BYTES"
+  if [[ "$DEVICE_PROFILE" == "h3c_magic-nx30-pro" ]]; then
+    echo "MAX_SAFE_PAYLOAD_BYTES=$MAX_PAYLOAD_BYTES"
+  fi
 } > "$OUT/BUILD-INFO.txt"
 
-find "$OUT" -maxdepth 1 -type f \( -name '*.bin' -o -name '*.itb' -o -name '*.img' -o -name '*.tar' \) -print0 |
+if [[ "$DEVICE_PROFILE" == "redmi_ax6" ]]; then
+  FACTORY_UBI_IMAGE="$(find "$OUT" -maxdepth 1 -type f -name "$FACTORY_GLOB" -print -quit)"
+  [[ -n "$FACTORY_UBI_IMAGE" && -s "$FACTORY_UBI_IMAGE" ]] || {
+    echo "ERROR: Redmi AX6 factory.ubi was not generated." >&2
+    find "$OUT" -maxdepth 1 -type f -printf '%f\n' | sort || true
+    exit 1
+  }
+  FACTORY_MAGIC="$(od -An -N4 -tx1 "$FACTORY_UBI_IMAGE" | tr -d ' \n')"
+  [[ "$FACTORY_MAGIC" == "55424923" ]] || {
+    echo "ERROR: AX6 factory image does not start with UBI# magic (got $FACTORY_MAGIC)." >&2
+    exit 1
+  }
+  FACTORY_BYTES="$(stat -c '%s' "$FACTORY_UBI_IMAGE")"
+  REFERENCE_FACTORY_BYTES=81920000
+  echo "AX6_FACTORY_UBI_BYTES=$FACTORY_BYTES"
+  echo "AX6_KNOWN_GOOD_FACTORY_UBI_BYTES=$REFERENCE_FACTORY_BYTES"
+  if (( FACTORY_BYTES > REFERENCE_FACTORY_BYTES )); then
+    echo "ERROR: AX6 factory UBI is larger than the known-good U-Boot image supplied for comparison." >&2
+    echo "Do not flash; verify NAND partition sizing before relaxing this guard." >&2
+    exit 1
+  fi
+  # Keep the native .ubi output. The .bin is a byte-identical convenience copy,
+  # not a converted or repacked image; U-Boot must receive the native UBI payload.
+  cp "$FACTORY_UBI_IMAGE" "$OUT/redmi_ax6-campus-factory.bin"
+  cmp -s "$FACTORY_UBI_IMAGE" "$OUT/redmi_ax6-campus-factory.bin" || {
+    echo "ERROR: factory.bin alias differs from factory.ubi." >&2; exit 1;
+  }
+fi
+
+find "$OUT" -maxdepth 1 -type f \( -name '*.bin' -o -name '*.ubi' -o -name '*.itb' -o -name '*.img' -o -name '*.tar' \) -print0 |
   xargs -0 -r sha256sum > "$OUT/SHA256SUMS"
 test -s "$OUT/SHA256SUMS" || { echo 'ERROR: no firmware image files found for checksumming.' >&2; exit 1; }
 
