@@ -32,7 +32,7 @@ case "$DEVICE_PROFILE" in
     TARGET_SUBDIR="qualcommax/ipq807x"
     TARGET_PROFILE_LINE='CONFIG_TARGET_qualcommax_ipq807x_DEVICE_redmi_ax6=y'
     SYSUPGRADE_GLOB='*redmi_ax6*squashfs-sysupgrade.bin'
-    FACTORY_GLOB='*redmi_ax6*squashfs-factory.ubi'
+    FACTORY_GLOB='*redmi_ax6*factory.ubi'
     ;;
   *)
     echo "ERROR: unknown/unimplemented DEVICE_PROFILE=$DEVICE_PROFILE" >&2
@@ -514,6 +514,16 @@ echo "DEVICE_PROFILE=$DEVICE_PROFILE"
 echo "KERNEL_BYTES=$KERNEL_BYTES"
 echo "ROOTFS_BYTES=$ROOTFS_BYTES"
 echo "KERNEL_PLUS_ROOTFS_BYTES=$PAYLOAD_BYTES"
+
+if [[ "$DEVICE_PROFILE" == "redmi_ax6" ]]; then
+  # Conservative guard: the kernel + rootfs payload must not exceed the size
+  # of the known-good AX6 factory UBI image supplied by the user (80 MiB).
+  AX6_REFERENCE_BYTES=81920000
+  if (( PAYLOAD_BYTES > AX6_REFERENCE_BYTES )); then
+    echo "ERROR: AX6 sysupgrade kernel+rootfs payload exceeds the known-good 80 MiB factory image size." >&2
+    exit 1
+  fi
+fi
 
 if [[ "$DEVICE_PROFILE" == "h3c_magic-nx30-pro" ]]; then
   # NX30 Pro has a 64 MiB UBI partition; retain the proven 4 MiB safety margin.
